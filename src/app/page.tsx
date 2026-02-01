@@ -1,50 +1,70 @@
-import Image from 'next/image'
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { createConversation } from "@/store/chatSlice";
+import { ConversationSidebar } from "@/components/features/ConversationSidebar";
+import { ChatWindow } from "@/components/features/ChatWindow";
+import { ModelSelector } from "@/components/features/ModelSelector";
+import { KnowledgeBaseDialog } from "@/components/features/KnowledgeBaseDialog";
+import { SettingsDialog } from "@/components/features/SettingsDialog";
+import { Button } from "@/components/ui/Button";
+import { BookOpen, Settings } from "lucide-react";
 
 export default function Home() {
+  const dispatch = useAppDispatch();
+  const { conversations } = useAppSelector((state) => state.chat);
+  const [isKbOpen, setIsKbOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Initialize a conversation if none exists
+  useEffect(() => {
+    if (conversations.length === 0) {
+      dispatch(createConversation());
+    }
+  }, [conversations.length, dispatch]);
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-gray-200 py-6">
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">AI Tools</h1>
-          <nav>
-            <ul className="flex space-x-6">
-              <li><a href="#" className="hover:text-blue-600">首页</a></li>
-              <li><a href="#" className="hover:text-blue-600">功能</a></li>
-              <li><a href="#" className="hover:text-blue-600">关于</a></li>
-            </ul>
-          </nav>
-        </div>
-      </header>
-      
-      <main className="container mx-auto px-4 py-12">
-        <section className="text-center mb-16">
-          <h2 className="text-4xl font-bold mb-4">欢迎使用 AI Tools</h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            基于 Next.js 14 + TypeScript + Tailwind CSS 构建的 AI 工具应用
-          </p>
-        </section>
-        
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-            <h3 className="text-xl font-semibold mb-3">工具 1</h3>
-            <p className="text-gray-600">这是第一个 AI 工具的描述</p>
+    <main className="flex h-screen w-full overflow-hidden bg-zinc-950 text-zinc-100">
+      {/* Sidebar */}
+      <ConversationSidebar />
+
+      {/* Main Chat Area */}
+      <div className="flex h-full flex-1 flex-col relative">
+        <header className="flex h-14 items-center justify-between border-b border-zinc-800 bg-zinc-950/50 px-6 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/50 z-10">
+          <ModelSelector />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-zinc-400 hover:text-zinc-100"
+              onClick={() => setIsKbOpen(true)}
+            >
+              <BookOpen className="mr-2 h-4 w-4" />
+              Knowledge Base
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-zinc-400 hover:text-zinc-100"
+              onClick={() => setIsSettingsOpen(true)}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-            <h3 className="text-xl font-semibold mb-3">工具 2</h3>
-            <p className="text-gray-600">这是第二个 AI 工具的描述</p>
-          </div>
-          <div className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-            <h3 className="text-xl font-semibold mb-3">工具 3</h3>
-            <p className="text-gray-600">这是第三个 AI 工具的描述</p>
-          </div>
-        </section>
-      </main>
-      
-      <footer className="border-t border-gray-200 py-8">
-        <div className="container mx-auto px-4 text-center text-gray-600">
-          <p>&copy; {new Date().getFullYear()} AI Tools. All rights reserved.</p>
-        </div>
-      </footer>
-    </div>
-  )
+        </header>
+
+        <ChatWindow />
+
+        <KnowledgeBaseDialog
+          isOpen={isKbOpen}
+          onClose={() => setIsKbOpen(false)}
+        />
+        <SettingsDialog
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      </div>
+    </main>
+  );
 }
