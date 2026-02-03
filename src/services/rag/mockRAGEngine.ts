@@ -10,24 +10,24 @@ export interface Document {
 // Helper: Calculate Cosine Similarity between two vectors
 function cosineSimilarity(vecA: number[], vecB: number[]): number {
   if (vecA.length !== vecB.length) return 0;
-  
+
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
-  
+
   for (let i = 0; i < vecA.length; i++) {
     dotProduct += vecA[i] * vecB[i];
     normA += vecA[i] * vecA[i];
     normB += vecB[i] * vecB[i];
   }
-  
+
   if (normA === 0 || normB === 0) return 0;
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 // 1. Simple Text Splitter
 class SimpleTextSplitter {
-  constructor(private chunkSize: number = 500, private chunkOverlap: number = 50) {}
+  constructor(private chunkSize: number = 500, private chunkOverlap: number = 50) { }
 
   splitText(text: string): string[] {
     const chunks: string[] = [];
@@ -64,7 +64,7 @@ class DeterministicFakeEmbeddings {
   private hashTextToVector(text: string): number[] {
     const vector = new Array(this.dimensions).fill(0);
     const normalizedText = text.toLowerCase();
-    
+
     // Simple "Bag of Character-Codes" hashing distributed across dimensions
     for (let i = 0; i < normalizedText.length; i++) {
       const charCode = normalizedText.charCodeAt(i);
@@ -78,7 +78,7 @@ class DeterministicFakeEmbeddings {
       norm += vector[i] * vector[i];
     }
     norm = Math.sqrt(norm);
-    
+
     if (norm > 0) {
       for (let i = 0; i < this.dimensions; i++) {
         vector[i] /= norm;
@@ -123,9 +123,9 @@ class SimpleMemoryVectorStore {
 
     // Sort by score desc
     scoredDocs.sort((a, b) => b.score - a.score);
-
+    console.log('scoredDocs', scoredDocs)
     console.log("[RAG] Vector Search Top Scores:", scoredDocs.slice(0, 3).map(d => ({ text: d.doc.pageContent.slice(0, 20), score: d.score.toFixed(4) })));
-
+    console.log('scoredDocs', scoredDocs)
     // Return top k
     return scoredDocs
       .slice(0, k)
@@ -149,13 +149,13 @@ class MockRAGEngine {
   async ingest(text: string, source: string = "user-input"): Promise<void> {
     // 1. Split text into chunks
     const docs = this.splitter.createDocuments([text], [{ source }]);
-    
+
     // 2. Generate embeddings for chunks
     const vectors = await this.embeddings.embedDocuments(docs.map(d => d.pageContent));
-    
+
     // 3. Store chunks + vectors
     await this.vectorStore.addDocuments(docs, vectors);
-    
+
     console.log(`[RAG] Ingested ${docs.length} chunks from source: ${source}`);
   }
 
@@ -163,10 +163,10 @@ class MockRAGEngine {
   async retrieve(query: string, k: number = 2): Promise<Document[]> {
     // 1. Embed the query
     const queryVector = await this.embeddings.embedQuery(query);
-    
+
     // 2. Vector Search
     const resultsWithScore = await this.vectorStore.similaritySearchVectorWithScore(queryVector, k);
-    
+
     // 3. Filter by threshold (optional, e.g., score > 0.5)
     // For this deterministic mock, exact word overlap gives high score.
     return resultsWithScore
@@ -181,7 +181,7 @@ class MockRAGEngine {
     }
 
     const contextText = context.map(doc => `• ${doc.pageContent}`).join("\n");
-    
+
     return `Based on the knowledge base (Vector Search Match), here is what I found:\n\n${contextText}\n\n(This response demonstrates successful RAG: The user query was converted to a vector, compared against stored document vectors using Cosine Similarity, and the best matches were retrieved.)`;
   }
 }

@@ -25,7 +25,7 @@ export const ChatWindow: React.FC = () => {
   );
 
   const [isRealEngine, setIsRealEngine] = React.useState(false);
-
+  console.log("222", 222);
   // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
@@ -70,10 +70,13 @@ export const ChatWindow: React.FC = () => {
 
     try {
       // Check if OpenAI Key is set to determine which engine to use
-      const apiKey = localStorage.getItem("OPENAI_API_KEY");
+      const apiKey =
+        localStorage.getItem("OPENAI_API_KEY") ||
+        "sk-4EVaiOOCO95SvVh78XPgajAnVNB7lKcpM2tuGIRFScudhMvC";
       const useRealEngine = !!apiKey;
-
+      console.log("useRealEngine1", useRealEngine);
       if (useRealEngine) {
+        console.log("useRealEngine");
         // --- REAL LANGCHAIN RAG FLOW ---
         let fullResponse = "";
         await openAIRAGEngine.generateResponseStream(content, (chunk) => {

@@ -37,6 +37,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         {message.attachments && message.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
             {message.attachments.map((att) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 key={att.id}
                 src={att.url}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { Textarea } from '@/components/ui/Textarea';
 import { Button } from '@/components/ui/Button';
 import { Send, Square, Image as ImageIcon, X } from 'lucide-react';
@@ -74,10 +75,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isStreamin
           <div className="flex gap-2 mb-2 overflow-x-auto pb-2">
             {attachments.map((att) => (
               <div key={att.id} className="relative group shrink-0">
-                <img 
-                  src={att.url} 
-                  alt={att.name} 
+                <Image
+                  src={att.url}
+                  alt={att.name}
+                  width={64}
+                  height={64}
                   className="h-16 w-16 object-cover rounded-md border border-zinc-600"
+                  unoptimized
                 />
                 <button
                   onClick={() => removeAttachment(att.id)}
