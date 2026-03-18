@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
-import { ragEngine as mockRAGEngine } from "@/services/rag/mockRAGEngine";
+
 import { addText, search, StoredDocument } from "@/services/rag/RAG";
 import { BookOpen, Check, X, Search } from "lucide-react";
 
@@ -44,7 +44,7 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
         await addText(text, { source: "user-paste" });
       } else {
         // Use Mock Engine
-        await mockRAGEngine.ingest(text, "user-paste");
+        // await mockRAGEngine.ingest(text, "user-paste");
       }
 
       setSuccess(true);
@@ -155,7 +155,6 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
               <Button
                 onClick={handleSearchTest}
                 disabled={isSearching || !searchQuery}
-                variant="outline"
               >
                 <Search size={16} className="mr-2" />
                 {isSearching ? "Searching..." : "Test"}

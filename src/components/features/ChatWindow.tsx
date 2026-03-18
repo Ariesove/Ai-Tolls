@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import {
   addMessage,
@@ -8,7 +8,9 @@ import {
 } from "@/store/chatSlice";
 import { mockAiService } from "@/services/api/mockAiService";
 import { ragEngine as mockRAGEngine } from "@/services/rag/mockRAGEngine";
-import { openAIRAGEngine } from "@/services/rag/openAIRAGEngine";
+import { getLLm } from "@/services/rag/RAG";
+
+import { processFunctionCall } from "@/services/functionCalling/functionCalling";
 import { MessageItem } from "./MessageItem";
 import { ChatInput } from "./ChatInput";
 import { Attachment } from "@/types/chat";
@@ -23,15 +25,45 @@ export const ChatWindow: React.FC = () => {
   const activeConversation = conversations.find(
     (c) => c.id === activeConversationId,
   );
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const [isRealEngine, setIsRealEngine] = React.useState(false);
   console.log("222", 222);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      // 判断是否“接近底部”（比如距离底部 < 10px）
+      let c = scrollHeight - scrollTop - clientHeight;
+      console.log("c", c);
+
+      if (scrollHeight - scrollTop - clientHeight < 260) {
+        setIsAtBottom(true);
+      } else {
+        setIsAtBottom(false);
+      }
+    }
+  };
+
   // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      // 判断是否“接近底部”（比如距离底部 < 10px）
+      let c = scrollHeight - scrollTop - clientHeight;
+      console.log("c", c);
+      requestAnimationFrame(() => {
+        // 【策略选择】流式高频更新用 'auto' 防卡顿，非流式用 'smooth' 做过渡
+        const behavior = isStreaming ? "auto" : "smooth";
+        if (scrollHeight - scrollTop - clientHeight < 260 && isAtBottom) {
+          scrollRef.current?.scrollTo({
+            top: scrollRef.current.scrollHeight,
+            behavior: behavior,
+          });
+        }
+      });
     }
-  }, [activeConversation?.messages, isStreaming]);
+  }, [activeConversation?.messages, isStreaming, isAtBottom]);
 
   // Check engine mode on mount
   useEffect(() => {
@@ -74,17 +106,14 @@ export const ChatWindow: React.FC = () => {
         localStorage.getItem("OPENAI_API_KEY") ||
         "sk-4EVaiOOCO95SvVh78XPgajAnVNB7lKcpM2tuGIRFScudhMvC";
       const useRealEngine = !!apiKey;
-      console.log("useRealEngine1", useRealEngine);
       if (useRealEngine) {
         console.log("useRealEngine");
         // --- REAL LANGCHAIN RAG FLOW ---
-        let fullResponse = "";
-        await openAIRAGEngine.generateResponseStream(content, (chunk) => {
-          fullResponse += chunk;
+        await getLLm(content, (chunk) => {
           dispatch(
             updateLastMessageContent({
               conversationId: activeConversationId,
-              content: fullResponse,
+              content: chunk,
             }),
           );
         });
@@ -164,7 +193,11 @@ export const ChatWindow: React.FC = () => {
   return (
     <div className="flex h-full flex-1 flex-col bg-zinc-950">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+      <div
+        className="flex-1 overflow-y-auto"
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         <div className="flex flex-col pb-4">
           {activeConversation.messages.map((msg) => (
             <MessageItem key={msg.id} message={msg} />

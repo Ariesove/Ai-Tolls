@@ -1,31 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Settings, X, Check, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Settings, X, Check, Eye, EyeOff } from "lucide-react";
 
 interface SettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
-  const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
+export const SettingsDialog: React.FC<SettingsDialogProps> = ({
+  isOpen,
+  onClose,
+}) => {
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setApiKey(localStorage.getItem('OPENAI_API_KEY') || '');
-      setBaseUrl(localStorage.getItem('OPENAI_BASE_URL') || '');
+      setApiKey(localStorage.getItem("OPENAI_API_KEY") || "");
+      setBaseUrl(
+        localStorage.getItem("OPENAI_BASE_URL") || "https://api.openai.com/v1",
+      );
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    localStorage.setItem('OPENAI_API_KEY', apiKey);
-    localStorage.setItem('OPENAI_BASE_URL', baseUrl);
+    localStorage.setItem("OPENAI_API_KEY", apiKey);
+    localStorage.setItem("OPENAI_BASE_URL", baseUrl);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -41,14 +46,19 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
             <Settings className="h-5 w-5 text-zinc-100" />
             <h2 className="text-lg font-semibold text-zinc-100">Settings</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
+          <button
+            onClick={onClose}
+            className="text-zinc-500 hover:text-zinc-300"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">OpenAI API Key</label>
+            <label className="text-sm font-medium text-zinc-300">
+              OpenAI API Key
+            </label>
             <div className="relative">
               <Input
                 type={showKey ? "text" : "password"}
@@ -61,7 +71,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
                 onClick={() => setShowKey(!showKey)}
                 className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300"
               >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showKey ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
               </button>
             </div>
             <p className="text-xs text-zinc-500">
@@ -70,10 +84,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Base URL (Optional)</label>
+            <label className="text-sm font-medium text-zinc-300">
+              Base URL (Optional)
+            </label>
             <Input
               type="text"
-              value={baseUrl}
+              value={baseUrl ?? "https://api.openai.com/v1"}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api.openai.com/v1"
               className="bg-zinc-950 border-zinc-800 text-zinc-100"
@@ -88,15 +104,17 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSave} 
+          <Button
+            onClick={handleSave}
             className={saved ? "bg-green-600 hover:bg-green-700" : ""}
           >
             {saved ? (
               <>
                 <Check className="mr-2 h-4 w-4" /> Saved
               </>
-            ) : 'Save Changes'}
+            ) : (
+              "Save Changes"
+            )}
           </Button>
         </div>
       </div>
