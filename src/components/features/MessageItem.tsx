@@ -1,7 +1,7 @@
 import React from "react";
 import { Message } from "@/types/chat";
 import { cn } from "@/lib/utils";
-import { Bot, User, AlertCircle, RefreshCw } from "lucide-react";
+import { Bot, User, AlertCircle, RefreshCw, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
@@ -60,18 +60,90 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const isUser = message.role === "user";
   const isError = message.status === "error";
 
-  const CodeBlock: React.FC<{
+  const CodeInline: React.FC<{
     inline?: boolean;
     className?: string;
     children?: React.ReactNode;
-  }> = ({ inline, className, children }) => {
-    const language = className?.replace("language-", "") || "";
-    const code = String(children ?? "");
-    if (!inline && language.toLowerCase() === "mermaid") {
-      return <MermaidRenderer code={code} />;
+  }> = ({ inline, children }) => {
+    if (inline) {
+      return (
+        <code className="rounded bg-zinc-800/60 px-1 py-0.5">{children}</code>
+      );
     }
+    return <code>{children}</code>;
+  };
+
+  function extractCodeInfo(node: React.ReactNode): {
+    code: string;
+    language: string;
+  } {
+    if (React.isValidElement(node)) {
+      const child = node as React.ReactElement<{
+        className?: string;
+        children?: React.ReactNode;
+      }>;
+      const language =
+        typeof child.props.className === "string"
+          ? child.props.className.replace("language-", "").toLowerCase()
+          : "";
+      const content =
+        typeof child.props.children === "string"
+          ? child.props.children
+          : Array.isArray(child.props.children)
+            ? child.props.children.join("")
+            : "";
+      return { code: content, language };
+    }
+    return { code: "", language: "" };
+  }
+
+  const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+    const [copied, setCopied] = useState(false);
+    const onCopy = async () => {
+      const markCopied = () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      };
+      try {
+        if (
+          (navigator as any).clipboard &&
+          typeof (navigator as any).clipboard.writeText === "function"
+        ) {
+          await (navigator as any).clipboard.writeText(text);
+          markCopied();
+          return;
+        }
+      } catch {}
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "0";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch {}
+      document.body.removeChild(ta);
+      if (ok) markCopied();
+    };
     return (
-      <code className="rounded bg-zinc-800/60 px-1 py-0.5">{children}</code>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label="Copy code"
+        className="absolute right-2 top-2 rounded-md border border-zinc-700 bg-zinc-800/80 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 inline-block" />
+        ) : (
+          <Copy className="h-3 w-3 inline-block" />
+        )}{" "}
+        {copied ? "已复制" : "复制"}
+      </button>
     );
   };
 
@@ -111,15 +183,29 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       );
     },
     code: (props: React.HTMLProps<HTMLElement>) => (
-      <code className="rounded bg-zinc-800/60 px-1 py-0.5">
+      <CodeInline inline className={props.className}>
         {props.children}
-      </code>
+      </CodeInline>
     ),
-    pre: (props: React.HTMLProps<HTMLPreElement>) => (
-      <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        {props.children}
-      </pre>
-    ),
+    pre: (props: React.HTMLProps<HTMLPreElement>) => {
+      const info = extractCodeInfo(props.children as React.ReactNode);
+      if (info.language === "mermaid") {
+        return (
+          <div className="relative">
+            <MermaidRenderer code={info.code} />
+            <CopyButton text={info.code} />
+          </div>
+        );
+      }
+      return (
+        <div className="relative">
+          <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+            {props.children}
+          </pre>
+          <CopyButton text={info.code} />
+        </div>
+      );
+    },
     p: (props: React.HTMLProps<HTMLParagraphElement>) => (
       <p className="whitespace-pre-wrap break-words">{props.children}</p>
     ),
@@ -208,7 +294,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                     },
                   ],
                 ]}
-                components={{ ...markdownComponents, code: CodeBlock } as any}
+                components={{ ...markdownComponents } as any}
               >
                 {message.content}
               </ReactMarkdown>
