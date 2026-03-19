@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import StoreProvider from "./providers";
 import "./globals.css";
 import "katex/dist/katex.min.css";
-
+import "../components/features/index.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {

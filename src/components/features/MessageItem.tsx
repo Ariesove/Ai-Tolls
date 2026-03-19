@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { Message } from "@/types/chat";
 import { cn } from "@/lib/utils";
@@ -59,6 +61,34 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 }) => {
   const isUser = message.role === "user";
   const isError = message.status === "error";
+
+  function preprocessMarkdownForStreaming(md: string): string {
+    const lines = md.split("\n");
+    type Fence = { marker: "```" | "~~~"; lang?: string };
+    const stack: Fence[] = [];
+    for (const line of lines) {
+      const openMatch = /^(```|~~~)\s*([a-zA-Z0-9+-_.]*)?\s*$/.exec(line);
+      if (openMatch) {
+        const marker = openMatch[1] as "```" | "~~~";
+        const lang = (openMatch[2] || "").trim() || undefined;
+        stack.push({ marker, lang });
+        continue;
+      }
+      const closeMatch = /^(```|~~~)\s*$/.exec(line);
+      if (closeMatch && stack.length > 0) {
+        const marker = closeMatch[1] as "```" | "~~~";
+        const last = stack[stack.length - 1];
+        if (last.marker === marker) {
+          stack.pop();
+        }
+      }
+    }
+    if (stack.length > 0) {
+      const last = stack[stack.length - 1];
+      return md + "\n" + last.marker;
+    }
+    return md;
+  }
 
   const CodeInline: React.FC<{
     inline?: boolean;
@@ -146,6 +176,313 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       </button>
     );
   };
+  // Prism 预加载与共享缓存
+  const prismCacheRef = useRef<{
+    PrismLight: any | null;
+    theme: any | null;
+    languages: Set<string>;
+  }>({ PrismLight: null, theme: null, languages: new Set<string>() });
+  async function ensurePrismBase(): Promise<void> {
+    if (!prismCacheRef.current.PrismLight || !prismCacheRef.current.theme) {
+      const PrismLight = (
+        await import("react-syntax-highlighter/dist/esm/prism-light")
+      ).default;
+      const oneDark = (
+        await import("react-syntax-highlighter/dist/esm/styles/prism/one-dark")
+      ).default;
+      prismCacheRef.current.PrismLight = PrismLight;
+      prismCacheRef.current.theme = oneDark;
+    }
+  }
+  async function preloadCommonLanguages(): Promise<void> {
+    await ensurePrismBase();
+    const cache = prismCacheRef.current;
+    const common = [
+      "typescript",
+      "javascript",
+      "json",
+      "markdown",
+      "bash",
+      "python",
+      "markup",
+    ];
+    for (const lang of common) {
+      if (!cache.languages.has(lang)) {
+        try {
+          const mod = await (async () => {
+            switch (lang) {
+              case "typescript":
+                return (
+                  await import("react-syntax-highlighter/dist/esm/languages/prism/typescript")
+                ).default;
+              case "javascript":
+                return (
+                  await import("react-syntax-highlighter/dist/esm/languages/prism/javascript")
+                ).default;
+              case "json":
+                return (
+                  await import("react-syntax-highlighter/dist/esm/languages/prism/json")
+                ).default;
+              case "markdown":
+                try {
+                  return (
+                    await import("react-syntax-highlighter/dist/esm/languages/prism/markdown")
+                  ).default;
+                } catch {
+                  return (
+                    await import("react-syntax-highlighter/dist/esm/languages/prism/markup")
+                  ).default;
+                }
+              case "bash":
+                return (
+                  await import("react-syntax-highlighter/dist/esm/languages/prism/bash")
+                ).default;
+              case "python":
+                return (
+                  await import("react-syntax-highlighter/dist/esm/languages/prism/python")
+                ).default;
+              default:
+                return (
+                  await import("react-syntax-highlighter/dist/esm/languages/prism/markup")
+                ).default;
+            }
+          })();
+          if (
+            mod &&
+            cache.PrismLight &&
+            typeof cache.PrismLight.registerLanguage === "function"
+          ) {
+            cache.PrismLight.registerLanguage(lang, mod);
+            cache.languages.add(lang);
+          }
+        } catch {}
+      }
+    }
+  }
+  function detectFenceLang(md: string): string | undefined {
+    const lines = md.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^(```|~~~)\s*([a-zA-Z0-9+-_.]*)?\s*$/.exec(lines[i]);
+      if (m) {
+        const raw = (m[2] || "").trim().toLowerCase();
+        if (!raw) return undefined;
+        if (raw === "ts" || raw === "tsx" || raw === "typescript")
+          return "typescript";
+        if (raw === "js" || raw === "jsx" || raw === "javascript")
+          return "javascript";
+        if (raw === "json") return "json";
+        if (raw === "bash" || raw === "shell" || raw === "sh") return "bash";
+        if (raw === "md" || raw === "markdown") return "markdown";
+        if (raw === "py" || raw === "python") return "python";
+        return "markup";
+      }
+    }
+    return undefined;
+  }
+  const PrefetchPrismFromContent: React.FC<{ content: string }> = ({
+    content,
+  }) => {
+    useEffect(() => {
+      (async () => {
+        const lang = detectFenceLang(content);
+        if (lang) {
+          try {
+            // 仅预热，不阻塞渲染
+            const cache = prismCacheRef.current;
+            if (!cache.PrismLight || !cache.theme) {
+              await ensurePrismBase();
+            }
+            if (!cache.languages.has(lang)) {
+              // 复用 CodeBlockHighlighted 的加载逻辑
+              const mod = await (async () => {
+                switch (lang) {
+                  case "typescript":
+                    return (
+                      await import("react-syntax-highlighter/dist/esm/languages/prism/typescript")
+                    ).default;
+                  case "javascript":
+                    return (
+                      await import("react-syntax-highlighter/dist/esm/languages/prism/javascript")
+                    ).default;
+                  case "json":
+                    return (
+                      await import("react-syntax-highlighter/dist/esm/languages/prism/json")
+                    ).default;
+                  case "bash":
+                    return (
+                      await import("react-syntax-highlighter/dist/esm/languages/prism/bash")
+                    ).default;
+                  case "markdown":
+                    try {
+                      return (
+                        await import("react-syntax-highlighter/dist/esm/languages/prism/markdown")
+                      ).default;
+                    } catch {
+                      return (
+                        await import("react-syntax-highlighter/dist/esm/languages/prism/markup")
+                      ).default;
+                    }
+                  case "python":
+                    return (
+                      await import("react-syntax-highlighter/dist/esm/languages/prism/python")
+                    ).default;
+                  default:
+                    return (
+                      await import("react-syntax-highlighter/dist/esm/languages/prism/markup")
+                    ).default;
+                }
+              })();
+              if (
+                mod &&
+                cache.PrismLight &&
+                typeof cache.PrismLight.registerLanguage === "function"
+              ) {
+                cache.PrismLight.registerLanguage(lang, mod);
+                cache.languages.add(lang);
+              }
+            }
+          } catch {}
+        }
+      })();
+    }, [content]);
+    return null;
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await preloadCommonLanguages();
+      } catch {}
+    })();
+  }, []);
+  const CodeBlockHighlighted: React.FC<{ code: string; language?: string }> = ({
+    code,
+    language,
+  }) => {
+    type HighlighterComp = React.ComponentType<{
+      style: unknown;
+      language?: string;
+      children: string;
+    }>;
+    const [Highlighter, setHighlighter] = useState<HighlighterComp | null>(
+      null,
+    );
+    const [theme, setTheme] = useState<unknown>(null);
+    const [langId, setLangId] = useState<string | undefined>(undefined);
+    function normalizeLanguage(lang?: string): string {
+      const l = (lang || "").toLowerCase();
+      if (l === "ts" || l === "typescript" || l === "tsx") return "typescript";
+      if (l === "js" || l === "javascript" || l === "jsx") return "javascript";
+      if (l === "json") return "json";
+      if (l === "bash" || l === "shell" || l === "sh") return "bash";
+      if (l === "md" || l === "markdown") return "markdown";
+      if (l === "py" || l === "python") return "python";
+      return "markup";
+    }
+    async function loadPrismLanguage(lang: string): Promise<unknown | null> {
+      try {
+        switch (lang) {
+          case "typescript":
+            return (
+              await import("react-syntax-highlighter/dist/esm/languages/prism/typescript")
+            ).default;
+          case "javascript":
+            return (
+              await import("react-syntax-highlighter/dist/esm/languages/prism/javascript")
+            ).default;
+          case "json":
+            return (
+              await import("react-syntax-highlighter/dist/esm/languages/prism/json")
+            ).default;
+          case "bash":
+            return (
+              await import("react-syntax-highlighter/dist/esm/languages/prism/bash")
+            ).default;
+          case "markdown":
+            try {
+              return (
+                await import("react-syntax-highlighter/dist/esm/languages/prism/markdown")
+              ).default;
+            } catch {
+              return (
+                await import("react-syntax-highlighter/dist/esm/languages/prism/markup")
+              ).default;
+            }
+          case "python":
+            return (
+              await import("react-syntax-highlighter/dist/esm/languages/prism/python")
+            ).default;
+          case "markup":
+            return (
+              await import("react-syntax-highlighter/dist/esm/languages/prism/markup")
+            ).default;
+          default:
+            return null;
+        }
+      } catch {
+        return null;
+      }
+    }
+    async function ensurePrismLanguage(lang: string): Promise<void> {
+      await ensurePrismBase();
+      const cache = prismCacheRef.current;
+      if (!cache.languages.has(lang)) {
+        const mod = await loadPrismLanguage(lang);
+        if (
+          mod &&
+          cache.PrismLight &&
+          typeof cache.PrismLight.registerLanguage === "function"
+        ) {
+          cache.PrismLight.registerLanguage(lang, mod);
+          cache.languages.add(lang);
+        }
+      }
+    }
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          // 先加载 Prism 底座并立即启用高亮组件，避免初次渲染纯文本
+          await ensurePrismBase();
+          if (!cancelled) {
+            setTheme(prismCacheRef.current.theme as unknown);
+            setHighlighter(
+              () =>
+                prismCacheRef.current.PrismLight as unknown as HighlighterComp,
+            );
+            const normalizedEarly = normalizeLanguage(language);
+            setLangId(normalizedEarly);
+          }
+          // 再按需加载目标语言并切换 language
+          const normalized = normalizeLanguage(language);
+          await ensurePrismLanguage(normalized);
+          if (!cancelled) {
+            setLangId(normalized);
+          }
+        } catch {
+          if (!cancelled) {
+            setHighlighter(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [language]);
+
+    if (Highlighter && theme) {
+      return (
+        <Highlighter style={theme} language={langId}>
+          {code}
+        </Highlighter>
+      );
+    }
+    return (
+      <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <code>{code}</code>
+      </pre>
+    );
+  };
 
   const markdownComponents = {
     a: (props: React.HTMLProps<HTMLAnchorElement>) => {
@@ -199,9 +536,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       }
       return (
         <div className="relative">
-          <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-            {props.children}
-          </pre>
+          <CodeBlockHighlighted code={info.code} language={info.language} />
           <CopyButton text={info.code} />
         </div>
       );
@@ -267,38 +602,38 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         )}
         {message.content && (
           <div className="prose prose-sm prose-invert max-w-none text-zinc-300">
-            {message.status === "sending" ? (
-              <pre className="whitespace-pre-wrap break-words rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                {message.content}
-              </pre>
-            ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[
-                  rehypeKatex as any,
-                  [
-                    rehypeSanitize as any,
-                    {
-                      ...defaultSchema,
-                      attributes: {
-                        ...(defaultSchema as any).attributes,
-                        span: [
-                          ...((defaultSchema as any).attributes?.span || []),
-                          ["className", /^katex/],
-                        ],
-                      },
-                      tagNames: [
-                        ...((defaultSchema as any).tagNames || []),
-                        "span",
+            {/* 流式阶段：若检测到代码围栏和语言，提前预加载语言模块 */}
+            {message.status === "sending" && (
+              <PrefetchPrismFromContent content={message.content} />
+            )}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[
+                rehypeKatex as any,
+                [
+                  rehypeSanitize as any,
+                  {
+                    ...defaultSchema,
+                    attributes: {
+                      ...(defaultSchema as any).attributes,
+                      span: [
+                        ...((defaultSchema as any).attributes?.span || []),
+                        ["className", /^katex/],
                       ],
                     },
-                  ],
-                ]}
-                components={{ ...markdownComponents } as any}
-              >
-                {message.content}
-              </ReactMarkdown>
-            )}
+                    tagNames: [
+                      ...((defaultSchema as any).tagNames || []),
+                      "span",
+                    ],
+                  },
+                ],
+              ]}
+              components={{ ...markdownComponents } as any}
+            >
+              {message.status === "sending"
+                ? preprocessMarkdownForStreaming(message.content)
+                : message.content}
+            </ReactMarkdown>
             {message.status === "sending" && (
               <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-zinc-400 align-middle" />
             )}
