@@ -44,17 +44,190 @@ const getEmbeddings = () => {
   return embeddings;
 };
 
-const splitText = (text: string, chunkSize: number = 1000, chunkOverlap: number = 200) => {
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < text.length) {
-    const end = Math.min(start + chunkSize, text.length);
-    chunks.push(text.slice(start, end));
-    if (end === text.length) break;
-    start = end - chunkOverlap;
-    if (start < 0) start = 0;
+const estTokens = (s: string) => Math.ceil(s.length / 4);
+const smartSplitText = (text: string, maxTokens = 320, overlapTokens = 64) => {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const segs: Array<{ type: "code" | "text"; content: string }> = [];
+  let i = 0;
+  let buf: string[] = [];
+  while (i < lines.length) {
+    const m = /^(```|~~~)\s*([a-zA-Z0-9+._-]*)?\s*$/.exec(lines[i]);
+    if (m) {
+      if (buf.length) {
+        segs.push({ type: "text", content: buf.join("\n") });
+        buf = [];
+      }
+      const marker = m[1];
+      const start = i;
+      i++;
+      while (i < lines.length && !new RegExp(`^${marker}\\s*$`).test(lines[i])) i++;
+      if (i < lines.length) i++;
+      segs.push({ type: "code", content: lines.slice(start, i).join("\n") });
+      continue;
+    }
+    buf.push(lines[i]);
+    i++;
   }
-  return chunks;
+  if (buf.length) segs.push({ type: "text", content: buf.join("\n") });
+  const out: string[] = [];
+  const pushWithOverlap = (chunk: string) => {
+    if (out.length === 0) {
+      out.push(chunk);
+      return;
+    }
+    const prev = out[out.length - 1];
+    const overlapChars = Math.max(0, Math.floor((overlapTokens * 4)));
+    const tail = prev.slice(Math.max(0, prev.length - overlapChars));
+    out.push(tail + (tail ? "\n" : "") + chunk);
+  };
+  for (const seg of segs) {
+    if (seg.type === "code") {
+      const t = estTokens(seg.content);
+      if (t <= maxTokens) {
+        pushWithOverlap(seg.content);
+      } else {
+        const codeLines = seg.content.split("\n");
+        let buf2: string[] = [];
+        for (const l of codeLines) {
+          const tmp = buf2.length ? buf2.join("\n") + "\n" + l : l;
+          if (estTokens(tmp) > maxTokens) {
+            if (buf2.length) pushWithOverlap(buf2.join("\n"));
+            buf2 = [l];
+          } else {
+            buf2.push(l);
+          }
+        }
+        if (buf2.length) pushWithOverlap(buf2.join("\n"));
+      }
+    } else {
+      const paras = seg.content.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+      let acc: string[] = [];
+      for (const p of paras) {
+        const tmp = acc.length ? acc.join("\n\n") + "\n\n" + p : p;
+        if (estTokens(tmp) > maxTokens) {
+          if (acc.length) pushWithOverlap(acc.join("\n\n"));
+          acc = [p];
+        } else {
+          acc.push(p);
+        }
+      }
+      if (acc.length) pushWithOverlap(acc.join("\n\n"));
+    }
+  }
+  return out;
+};
+
+const computeChunkLineRanges = (original: string, chunks: string[]) => {
+  const ranges: Array<{ startLine: number; endLine: number }> = [];
+  let cursor = 0;
+  const safeIndexOf = (hay: string, needle: string, fromIdx: number) => {
+    let pos = hay.indexOf(needle, fromIdx);
+    if (pos !== -1) return pos;
+    const prefix = needle.slice(0, Math.min(80, needle.length)).trim();
+    if (prefix.length > 0) {
+      pos = hay.indexOf(prefix, fromIdx);
+      if (pos !== -1) return pos;
+    }
+    const suffix = needle.slice(-Math.min(80, needle.length)).trim();
+    if (suffix.length > 0) {
+      pos = hay.indexOf(suffix, fromIdx);
+      if (pos !== -1) return pos;
+    }
+    return hay.indexOf(needle);
+  };
+  for (const chunk of chunks) {
+    const pos = safeIndexOf(original, chunk, cursor);
+    const before = pos >= 0 ? original.slice(0, pos) : original.slice(0, cursor);
+    const startLine = before.split("\n").length;
+    const endLine = startLine + chunk.split("\n").length - 1;
+    ranges.push({ startLine, endLine });
+    if (pos >= 0) {
+      cursor = pos + Math.floor(chunk.length * 0.6);
+    } else {
+      cursor = cursor + Math.floor(chunk.length * 0.6);
+    }
+  }
+  return ranges;
+};
+
+const computeHitInsideChunk = (query: string, chunk: string, chunkStartLine?: number) => {
+  const lines = chunk.split("\n");
+  const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+  const qn = norm(query).slice(0, 200);
+  let hitStart = -1;
+  let hitEnd = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = norm(lines[i]);
+    if (qn && ln.includes(qn)) {
+      hitStart = i;
+      hitEnd = i;
+      break;
+    }
+  }
+  if (hitStart === -1) {
+    const base = norm(query).replace(/[^a-z0-9\u4e00-\u9fa5]/gi, "");
+    const windows: string[] = [];
+    const L = base.length;
+    const w = Math.max(6, Math.min(24, Math.floor(L / 2) || 6));
+    for (let i = 0; i + w <= L; i += Math.max(3, Math.floor(w / 2))) {
+      windows.push(base.slice(i, i + w));
+      if (windows.length > 6) break;
+    }
+    let bestIdx = -1;
+    let bestScore = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const ln = norm(lines[i]);
+      let score = 0;
+      for (const win of windows) {
+        if (win && ln.includes(win)) score += win.length;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx !== -1 && bestScore > 0) {
+      hitStart = bestIdx;
+      hitEnd = bestIdx;
+    }
+  }
+  if (hitStart === -1) {
+    const tokens = query
+      .toLowerCase()
+      .split(/[\s,.;:，。；：]+/)
+      .filter((t) => t.length >= 3)
+      .slice(0, 6);
+    if (tokens.length) {
+      const scores = lines.map((ln) => {
+        const n = ln.toLowerCase();
+        let s = 0;
+        for (const t of tokens) if (n.includes(t)) s++;
+        return s;
+      });
+      let bestIdx = -1;
+      let bestScore = -1;
+      for (let i = 0; i < scores.length; i++) {
+        if (scores[i] > bestScore) {
+          bestScore = scores[i];
+          bestIdx = i;
+        }
+      }
+      if (bestIdx !== -1 && bestScore > 0) {
+        hitStart = bestIdx;
+        hitEnd = bestIdx;
+      }
+    }
+  }
+  if (hitStart === -1) {
+    hitStart = 0;
+    hitEnd = Math.min(lines.length - 1, 0);
+  }
+  let winStart = Math.max(0, hitStart - 2);
+  let winEnd = Math.min(lines.length - 1, hitEnd + 2);
+  const hitText = lines.slice(winStart, winEnd + 1).join("\n");
+  const absStart = typeof chunkStartLine === "number" ? chunkStartLine + hitStart : undefined;
+  const absEnd = typeof chunkStartLine === "number" ? chunkStartLine + hitEnd : undefined;
+  return { hitStartAbs: absStart, hitEndAbs: absEnd, hitText };
 };
 
 const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
@@ -76,16 +249,17 @@ const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
 export const addText = async (text: string, metadata: Record<string, any> = {}): Promise<void> => {
   const embedder = getEmbeddings();
   console.log('embedder', embedder)
-  const chunks = splitText(text);
+  const chunks = smartSplitText(text);
   console.log('chunks', chunks)
   // Batch embed documents
   const vectors = await embedder.embedDocuments(chunks);
+  const ranges = computeChunkLineRanges(text, chunks);
 
   console.log('%c [  ]-72', 'font-size:13px; background:pink; color:#bf2c9f;', vectors)
   chunks.forEach((chunk, i) => {
     docs.push({
       pageContent: chunk,
-      metadata,
+      metadata: { ...metadata, chunkIndex: i, lineStart: ranges[i]?.startLine, lineEnd: ranges[i]?.endLine },
       vector: vectors[i]
     });
   });
@@ -120,7 +294,7 @@ const init = () => {
 /**
  * Search for similar documents
  */
-export const search = async (query: string, k: number = 4): Promise<StoredDocument[]> => {
+export const search = async (query: string, k: number = 4): Promise<{ doc: StoredDocument; score: number }[]> => {
   console.log(`[RAG] Searching for: "${query}"`);
   const embedder = getEmbeddings();
 
@@ -147,14 +321,14 @@ export const search = async (query: string, k: number = 4): Promise<StoredDocume
     console.log(`  ${i + 1}. Score: ${d.score.toFixed(4)} | Content: "${d.doc.pageContent.slice(0, 50)}..."`);
   });
   console.log('scoredDocs', scoredDocs)
-  return scoredDocs.slice(0, k).map(d => d.doc);
+  return scoredDocs.slice(0, k);
 };
 // 发起LLM请求 - 流式输出版本
-export const getLLm = async (query: string, onChunk: (chunk: string) => void) => {
+export const getLLm = async (query: string, onChunk: (chunk: string) => void): Promise<{ citations: { filename?: string; chunkIndex: number; preview: string; score?: number; content?: string; startLine?: number; endLine?: number }[] }> => {
   const llm = init();
   const llmWithTools = (llm as any).bindTools?.(lcTools) || llm;
-  const retrievedDocs = await search(query);
-  const contextStr = retrievedDocs.map(doc => doc.pageContent).join("\n\n");
+  const retrieved = await search(query);
+  const contextStr = retrieved.map(r => r.doc.pageContent).join("\n\n");
 
   const prompt = ChatPromptTemplate.fromTemplate(`Answer the question based only on the following context:
 {context}
@@ -245,6 +419,14 @@ Question: {question}`);
       await new Promise((r) => setTimeout(r, 16));
     }
   }
+  const citations = retrieved.map(r => {
+    const fn = typeof r.doc.metadata?.filename === 'string' ? r.doc.metadata.filename : undefined;
+    const idx = typeof r.doc.metadata?.chunkIndex === 'number' ? r.doc.metadata.chunkIndex : 0;
+    const cls = typeof r.doc.metadata?.lineStart === 'number' ? r.doc.metadata.lineStart : undefined;
+    const { hitStartAbs, hitEndAbs, hitText } = computeHitInsideChunk(query, r.doc.pageContent, cls);
+    return { filename: fn, chunkIndex: idx, preview: r.doc.pageContent.slice(0, 80), score: r.score, content: r.doc.pageContent, startLine: hitStartAbs, endLine: hitEndAbs, hitText };
+  });
+  return { citations };
 };
 
 
@@ -256,4 +438,13 @@ Question: {question}`);
  */
 export const clear = () => {
   // docs = [];add 
+};
+export const listDocs = (): Array<{ filename?: string; chunkIndex?: number; content: string; lineStart?: number; lineEnd?: number }> => {
+  return docs.map((d) => ({
+    filename: typeof d.metadata?.filename === 'string' ? d.metadata.filename : undefined,
+    chunkIndex: typeof d.metadata?.chunkIndex === 'number' ? d.metadata.chunkIndex : undefined,
+    content: d.pageContent,
+    lineStart: typeof d.metadata?.lineStart === 'number' ? d.metadata.lineStart : undefined,
+    lineEnd: typeof d.metadata?.lineEnd === 'number' ? d.metadata.lineEnd : undefined,
+  }));
 };

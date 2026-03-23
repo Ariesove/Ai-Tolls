@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+"use client";
+import React, { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 
 import { addText, search, StoredDocument } from "@/services/rag/RAG";
-import { BookOpen, Check, X, Search } from "lucide-react";
+import { BookOpen, Check, X, Search, UploadCloud } from "lucide-react";
 
 interface KnowledgeBaseDialogProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
   const [isIngesting, setIsIngesting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Search Test State
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,6 +29,82 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
     { doc: StoredDocument; score?: number }[]
   >([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const extractPdfText = useCallback(async (file: File): Promise<string> => {
+    const data = await file.arrayBuffer();
+    const mod = (await import("pdfjs-dist/legacy/build/pdf")) as unknown;
+    const url = new URL(
+      "pdfjs-dist/legacy/build/pdf.worker.min.js",
+      import.meta.url,
+    ).toString();
+    const g = (mod as { GlobalWorkerOptions?: { workerSrc?: string } })
+      .GlobalWorkerOptions;
+    if (g) {
+      g.workerSrc = url;
+    }
+    const getDocument = (
+      mod as {
+        getDocument: (opts: { data: ArrayBuffer }) => {
+          promise: Promise<{
+            numPages: number;
+            getPage: (n: number) => Promise<{
+              getTextContent: () => Promise<{
+                items: unknown[];
+              }>;
+            }>;
+          }>;
+        };
+      }
+    ).getDocument;
+    const task = getDocument({ data });
+    const pdf = await task.promise;
+    let out = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const items = Array.isArray(content.items) ? content.items : [];
+      const buf: string[] = [];
+      for (const it of items) {
+        if (
+          typeof it === "object" &&
+          it !== null &&
+          "str" in (it as { str?: unknown }) &&
+          typeof (it as { str?: unknown }).str === "string"
+        ) {
+          buf.push((it as { str: string }).str);
+        }
+      }
+      out += buf.join(" ") + "\n";
+    }
+    return out;
+  }, []);
+
+  const handleFile = useCallback(
+    async (f: File | undefined | null) => {
+      if (!f) return;
+      setFileName(`${f.name} (${Math.round(f.size / 1024)} KB)`);
+      if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
+        const pdfText = await extractPdfText(f);
+        setText(pdfText);
+        return;
+      }
+      const textContent = await f.text();
+      setText(textContent);
+    },
+    [extractPdfText],
+  );
+
+  const onDrop = useCallback(
+    async (e: React.DragEvent<HTMLLabelElement>) => {
+      e.preventDefault();
+      setDragging(false);
+      const f = e.dataTransfer.files?.[0];
+      if (f) {
+        await handleFile(f);
+      }
+    },
+    [handleFile],
+  );
 
   if (!isOpen) return null;
 
@@ -41,7 +121,10 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
 
       if (apiKey) {
         // Use Real Engine (Functional RAG)
-        await addText(text, { source: "user-paste" });
+        await addText(text, {
+          source: fileName ? "file-upload" : "user-paste",
+          filename: fileName || undefined,
+        });
       } else {
         // Use Mock Engine
         // await mockRAGEngine.ingest(text, "user-paste");
@@ -67,9 +150,7 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
     setIsSearching(true);
     try {
       const results = await search(searchQuery);
-      // Note: RAG.ts search returns StoredDocument[], logs score to console.
-      // To display score here we would need search to return it, but for now we show content.
-      setSearchResults(results.map((doc) => ({ doc })));
+      setSearchResults(results.map((r) => ({ doc: r.doc, score: r.score })));
     } catch (err) {
       console.error("Search failed", err);
     } finally {
@@ -111,6 +192,44 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
               placeholder="Paste text, documentation, or context here..."
               className="min-h-[150px] resize-none border-zinc-800 bg-zinc-900/50 text-zinc-100 focus:border-blue-500/50 focus:ring-blue-500/20"
             />
+            <label
+              htmlFor="kb-file"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              className={[
+                "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 transition-colors",
+                dragging ? "border-blue-500 bg-blue-500/5" : "border-zinc-800",
+                "hover:border-zinc-700",
+              ].join(" ")}
+            >
+              <UploadCloud className="h-6 w-6 text-zinc-400" />
+              <div className="text-sm text-zinc-300">
+                拖拽文件到此，或
+                <button
+                  type="button"
+                  className="ml-1 underline decoration-zinc-500 hover:decoration-zinc-300"
+                  onClick={() => inputRef.current?.click()}
+                >
+                  选择文件
+                </button>
+              </div>
+              <div className="text-xs text-zinc-500">
+                支持 .txt / .md / .pdf
+              </div>
+              <input
+                ref={inputRef}
+                id="kb-file"
+                type="file"
+                accept=".txt,.md,.markdown, text/plain, text/markdown, application/pdf"
+                className="hidden"
+                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+              />
+              <span className="text-xs text-zinc-500">{fileName}</span>
+            </label>
 
             {error && (
               <div className="rounded-md bg-red-500/10 p-3 text-sm text-red-500">

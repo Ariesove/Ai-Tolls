@@ -17,6 +17,17 @@ export interface Attachment {
   name: string;
 }
 
+export interface Citation {
+  filename?: string;
+  chunkIndex: number;
+  preview: string;
+  score?: number;
+  content?: string;
+  startLine?: number;
+  endLine?: number;
+  hitText?: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -24,6 +35,7 @@ export interface Message {
   createdAt: number;
   status?: MessageStatus;
   attachments?: Attachment[];
+  citations?: Citation[];
 }
 
 export interface Conversation {

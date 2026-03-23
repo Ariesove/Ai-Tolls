@@ -5,6 +5,8 @@ import { Message } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { Bot, User, AlertCircle, RefreshCw, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import type { Citation } from "@/types/chat";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,7 +14,7 @@ import rehypeSanitize from "rehype-sanitize";
 import { defaultSchema } from "hast-util-sanitize";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 interface MessageItemProps {
   message: Message;
@@ -194,7 +196,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       prismCacheRef.current.theme = oneDark;
     }
   }
-  async function preloadCommonLanguages(): Promise<void> {
+  const preloadCommonLanguages = useCallback(async (): Promise<void> => {
     await ensurePrismBase();
     const cache = prismCacheRef.current;
     const common = [
@@ -258,7 +260,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         } catch {}
       }
     }
-  }
+  }, []);
   function detectFenceLang(md: string): string | undefined {
     const lines = md.split("\n");
     for (let i = 0; i < lines.length; i++) {
@@ -354,7 +356,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         await preloadCommonLanguages();
       } catch {}
     })();
-  }, []);
+  }, [preloadCommonLanguages]);
   const CodeBlockHighlighted: React.FC<{ code: string; language?: string }> = ({
     code,
     language,
@@ -423,21 +425,24 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         return null;
       }
     }
-    async function ensurePrismLanguage(lang: string): Promise<void> {
-      await ensurePrismBase();
-      const cache = prismCacheRef.current;
-      if (!cache.languages.has(lang)) {
-        const mod = await loadPrismLanguage(lang);
-        if (
-          mod &&
-          cache.PrismLight &&
-          typeof cache.PrismLight.registerLanguage === "function"
-        ) {
-          cache.PrismLight.registerLanguage(lang, mod);
-          cache.languages.add(lang);
+    const ensurePrismLanguage = useCallback(
+      async (lang: string): Promise<void> => {
+        await ensurePrismBase();
+        const cache = prismCacheRef.current;
+        if (!cache.languages.has(lang)) {
+          const mod = await loadPrismLanguage(lang);
+          if (
+            mod &&
+            cache.PrismLight &&
+            typeof cache.PrismLight.registerLanguage === "function"
+          ) {
+            cache.PrismLight.registerLanguage(lang, mod);
+            cache.languages.add(lang);
+          }
         }
-      }
-    }
+      },
+      [],
+    );
     useEffect(() => {
       let cancelled = false;
       (async () => {
@@ -468,7 +473,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return () => {
         cancelled = true;
       };
-    }, [language]);
+    }, [language, ensurePrismLanguage]);
 
     if (Highlighter && theme) {
       return (
@@ -510,12 +515,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         );
       }
       return (
-        <img
+        <Image
           src={src}
           alt={typeof props.alt === "string" ? props.alt : ""}
+          width={640}
+          height={360}
+          unoptimized
           className="max-h-64 max-w-full rounded-lg border border-zinc-800 object-contain"
           loading="lazy"
-          referrerPolicy="no-referrer"
         />
       );
     },
@@ -639,6 +646,20 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             )}
           </div>
         )}
+        {message.role === "assistant" &&
+          Array.isArray(message.citations) &&
+          message.citations.length > 0 && (
+            <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-2">
+              <div className="mb-1 text-xs font-medium text-zinc-400">
+                引用来源
+              </div>
+              <ul className="space-y-1">
+                {message.citations.map((c, i) => (
+                  <CitationItem key={i} c={c} />
+                ))}
+              </ul>
+            </div>
+          )}
         {isError && (
           <div className="flex items-center gap-2 text-sm text-red-400">
             <AlertCircle className="h-4 w-4" />
@@ -657,6 +678,59 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         )}
       </div>
     </div>
+  );
+};
+
+const CitationItem: React.FC<{ c: Citation }> = ({ c }) => {
+  const [expanded, setExpanded] = useState(false);
+  const fileLabel = c.filename || "粘贴内容";
+  const params = new URLSearchParams();
+  if (c.filename) params.set("filename", c.filename);
+  params.set("chunk", String(c.chunkIndex));
+  if (typeof c.startLine === "number")
+    params.set("startLine", String(c.startLine));
+  if (typeof c.endLine === "number") params.set("endLine", String(c.endLine));
+  const jumpHref = "/kb/viewer?" + params.toString();
+  return (
+    <li className="text-xs text-zinc-400">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="truncate">
+            {fileLabel} · 第{c.chunkIndex + 1}段
+            {typeof c.startLine === "number" && typeof c.endLine === "number"
+              ? ` · L${c.startLine}-${c.endLine}`
+              : ""}
+          </span>
+          {typeof c.score === "number" && (
+            <span className="rounded bg-zinc-800 px-1 py-0.5 text-[10px] text-zinc-500">
+              {c.score.toFixed(2)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-zinc-700"
+          >
+            {expanded ? "收起" : "展开"}
+          </button>
+          <Link
+            href={jumpHref}
+            className="rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-zinc-700"
+          >
+            查看
+          </Link>
+        </div>
+      </div>
+      {!expanded ? (
+        <div className="line-clamp-2 text-zinc-500">{c.preview}</div>
+      ) : (
+        <div className="mt-1 whitespace-pre-wrap break-words rounded border border-zinc-800 bg-zinc-950 p-2 text-zinc-300">
+          {c.hitText || c.content || c.preview}
+        </div>
+      )}
+    </li>
   );
 };
 

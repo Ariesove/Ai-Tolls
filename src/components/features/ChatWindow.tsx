@@ -1,3 +1,4 @@
+"use client";
 import React, { useRef, useEffect, useState } from "react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import {
@@ -6,6 +7,7 @@ import {
   setStreaming,
   finalizeLastMessage,
 } from "@/store/chatSlice";
+import { setLastMessageCitations } from "@/store/chatSlice";
 import { mockAiService } from "@/services/api/mockAiService";
 import { ragEngine as mockRAGEngine } from "@/services/rag/mockRAGEngine";
 import { getLLm } from "@/services/rag/RAG";
@@ -108,8 +110,7 @@ export const ChatWindow: React.FC = () => {
       const useRealEngine = !!apiKey;
       if (useRealEngine) {
         console.log("useRealEngine");
-        // --- REAL LANGCHAIN RAG FLOW ---
-        await getLLm(content, (chunk) => {
+        const result = await getLLm(content, (chunk) => {
           dispatch(
             updateLastMessageContent({
               conversationId: activeConversationId,
@@ -117,6 +118,23 @@ export const ChatWindow: React.FC = () => {
             }),
           );
         });
+        if (result && Array.isArray(result.citations)) {
+          dispatch(
+            setLastMessageCitations({
+              conversationId: activeConversationId,
+              citations: result.citations.map((c) => ({
+                filename: c.filename,
+                chunkIndex: c.chunkIndex,
+                preview: c.preview,
+                score: c.score,
+                startLine: c.startLine,
+                endLine: c.endLine,
+                content: c.content,
+                hitText: c.hitText,
+              })),
+            }),
+          );
+        }
       } else {
         // --- MOCK FLOW (Fallback) ---
 

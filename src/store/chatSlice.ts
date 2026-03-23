@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ChatState, Message, Conversation, MessageRole, ModelId, Attachment } from '@/types/chat';
+import { ChatState, Message, Conversation, MessageRole, ModelId, Attachment, Citation } from '@/types/chat';
 import { v4 as uuidv4 } from 'uuid';
 
 const initialState: ChatState = {
@@ -23,6 +23,14 @@ const chatSlice = createSlice({
       };
       state.conversations.unshift(newConversation);
       state.activeConversationId = newConversation.id;
+    },
+    setLastMessageCitations: (state, action: PayloadAction<{ conversationId: string; citations: Citation[] }>) => {
+      const { conversationId, citations } = action.payload;
+      const conversation = state.conversations.find((c) => c.id === conversationId);
+      if (conversation && conversation.messages.length > 0) {
+        const lastMessage = conversation.messages[conversation.messages.length - 1];
+        lastMessage.citations = citations;
+      }
     },
     setActiveConversation: (state, action: PayloadAction<string>) => {
       state.activeConversationId = action.payload;
@@ -83,7 +91,8 @@ export const {
   updateLastMessageContent,
   finalizeLastMessage,
   setStreaming,
-  deleteConversation
+  deleteConversation,
+  setLastMessageCitations
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
