@@ -21,14 +21,15 @@ export class RefactorAgent extends BaseAgent {
 3) React：仅函数组件；useEffect 依赖精准；减少不必要重渲染。
 4) 组合优于继承；单一职责；分层清晰（Components→Hooks/Store→Services→Utils）。
 5) 只输出一个合法 JSON 对象，不要输出 Markdown/代码块/任何额外文本；首字符必须是 {，末字符必须是 }。
+6) 为了支持前端流式展示：必须先输出 suggestedCode 字段，并尽早开始输出其内容；其余字段（thinking/comments）放在 suggestedCode 后面。
 
 输出 JSON 格式：
 {
+  "suggestedCode": "最终可直接应用的完整代码",
   "thinking": "用 3-6 句总结你做了哪些关键合并决策（不要太长）",
   "comments": [
     { "severity": "warn", "message": "可选：汇总后的关键风险/收益点（最多 6 条）" }
-  ],
-  "suggestedCode": "最终可直接应用的完整代码"
+  ]
 }
     `;
   }
@@ -53,4 +54,3 @@ ${task.code}
     `;
   }
 }
-

@@ -25,25 +25,32 @@ export class CodeReviewOrchestrator {
    */
   async runReview(
     task: AgentTask,
-    onAgentProgress?: (role: AgentRole, progress: 'thinking' | 'done' | 'error') => void
+    onAgentProgress?: (role: AgentRole, progress: 'thinking' | 'done' | 'error') => void,
+    onAgentToken?: (role: AgentRole, chunk: string) => void,
+    onAgentResult?: (role: AgentRole, result: { role: AgentRole; comments: any[]; thinking?: string; suggestedCode?: string }) => void,
   ): Promise<OrchestratorResult> {
 
     // 1. 并行分发任务（中大厂追求效率的典型体现）
     const promises = this.agents.map(async (agent) => {
       onAgentProgress?.(agent.role, 'thinking');
-      const result = await agent.run(task);
+      const result = await agent.run(task, (piece) => {
+        onAgentToken?.(agent.role, piece);
+      });
 
       if (isOk(result)) {
         onAgentProgress?.(agent.role, 'done');
+        onAgentResult?.(agent.role, result.data);
         return result.data;
       } else {
         onAgentProgress?.(agent.role, 'error');
         console.error(`[${agent.name}] 审查失败:`, result.error);
-        return {
+        const fallback = {
           role: agent.role,
           comments: [{ severity: 'error', message: `审查失败: ${result.error}` }],
           thinking: '出错了，请检查配置。'
         };
+        onAgentResult?.(agent.role, fallback);
+        return fallback;
       }
     });
 
@@ -66,11 +73,14 @@ export class CodeReviewOrchestrator {
       ...task,
       context: [task.context, '【审查线索汇总】', mergedHints].filter(Boolean).join('\n\n'),
     };
-    const refRes = await this.refactorer.run(refTask);
+    const refRes = await this.refactorer.run(refTask, (piece) => {
+      onAgentToken?.(AgentRole.REFACTORER, piece);
+    });
     let finalSuggestion: string | undefined;
     if (isOk(refRes)) {
       onAgentProgress?.(AgentRole.REFACTORER, 'done');
       results.push(refRes.data);
+      onAgentResult?.(AgentRole.REFACTORER, refRes.data);
       finalSuggestion = refRes.data.suggestedCode;
     } else {
       onAgentProgress?.(AgentRole.REFACTORER, 'error');

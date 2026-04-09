@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Ref, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { v4 as uuidv4 } from "uuid";
 import { CodeReviewOrchestrator } from "@/services/agents/Orchestrator";
@@ -16,6 +16,10 @@ import { SettingsDialog } from "@/components/features/SettingsDialog";
 import { WorkflowStrip, StepStatus } from "@/components/features/WorkflowStrip";
 import { ScoreCard } from "@/components/features/ScoreCard";
 import { SummaryCard } from "@/components/features/SummaryCard";
+import {
+  ReviewHistoryPanel,
+  ReviewSnapshot,
+} from "@/components/features/ReviewHistoryPanel";
 import { listDocs } from "@/services/rag/RAG";
 import {
   AggregatedReview,
@@ -40,6 +44,7 @@ const ReactDiffViewer = dynamic(() => import("react-diff-viewer-continued"), {
 type LayoutMode = "split" | "review";
 type DiffTargetRole = AgentRole | "FINAL";
 type AppliedFrom = "LINTER" | "ARCHITECT" | "FINAL" | "DIFF";
+const HISTORY_KEY = "code_review_history_v1";
 
 export default function CodeReviewPage() {
   const [code, setCode] = useState("");
@@ -48,6 +53,11 @@ export default function CodeReviewPage() {
   const [isReviewing, setIsReviewing] = useState(false);
   const [results, setResults] = useState<AgentResult[]>([]);
   const [finalCode, setFinalCode] = useState("");
+  const [commandText, setCommandText] = useState("");
+  const [ragEvidence, setRagEvidence] = useState<
+    Array<{ title: string; preview: string }>
+  >([]);
+  const [isRagExplainOpen, setIsRagExplainOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<Record<string, string>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isKbOpen, setIsKbOpen] = useState(false);
@@ -71,6 +81,105 @@ export default function CodeReviewPage() {
   } | null>(null);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const [aggregated, setAggregated] = useState<AggregatedReview | null>(null);
+  const [draftAggregated, setDraftAggregated] =
+    useState<AggregatedReview | null>(null);
+  const [history, setHistory] = useState<ReviewSnapshot[]>([]);
+  const [draftFinalCode, setDraftFinalCode] = useState("");
+  const streamBufRef = useRef<Record<string, string>>({});
+  const rafRef = useRef<number | null>(null);
+  const [mcpScreenshot, setMcpScreenshot] = useState<string | null>(null);
+  const [mcpShotError, setMcpShotError] = useState<string | null>(null);
+  const [mcpLhError, setMcpLhError] = useState<string | null>(null);
+  const [mcpLhScores, setMcpLhScores] = useState<null | {
+    accessibility?: number;
+    seo?: number;
+    bestPractices?: number;
+    suggestions?: Array<{ id: string; title: string }>;
+  }>(null);
+  // 过程输出已移除：仅保留最终代码与总览的流式更新
+  const extractSuggestedCodeSoFar = (raw: string) => {
+    const key = '"suggestedCode"';
+    const k = raw.indexOf(key);
+    if (k === -1) return "";
+    let i = k + key.length;
+    while (i < raw.length && raw[i] !== ":") i++;
+    if (i >= raw.length) return "";
+    i++;
+    while (i < raw.length && /\s/.test(raw[i])) i++;
+    if (i >= raw.length) return "";
+    if (raw[i] !== '"') return "";
+    i++;
+
+    let out = "";
+    let esc = false;
+    while (i < raw.length) {
+      const ch = raw[i];
+      if (!esc) {
+        if (ch === '"') break;
+        if (ch === "\\") {
+          esc = true;
+          i++;
+          continue;
+        }
+        out += ch;
+        i++;
+        continue;
+      }
+
+      esc = false;
+      if (ch === "n") {
+        out += "\n";
+        i++;
+        continue;
+      }
+      if (ch === "r") {
+        out += "\r";
+        i++;
+        continue;
+      }
+      if (ch === "t") {
+        out += "\t";
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        out += '"';
+        i++;
+        continue;
+      }
+      if (ch === "\\") {
+        out += "\\";
+        i++;
+        continue;
+      }
+      if (ch === "u") {
+        const hex = raw.slice(i + 1, i + 5);
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 5;
+          continue;
+        }
+        out += "u";
+        i++;
+        continue;
+      }
+      out += ch;
+      i++;
+    }
+    return out;
+  };
+
+  const parseRagEvidence = (ctxText: string) => {
+    const start = ctxText.indexOf("：\n\n");
+    const body = start !== -1 ? ctxText.slice(start + 3) : ctxText;
+    const blocks = body.split("\n\n---\n\n").filter(Boolean);
+    return blocks.slice(0, 4).map((b) => {
+      const [firstLine, ...rest] = b.split("\n");
+      const title = (firstLine || "").trim();
+      const preview = rest.join("\n").trim().slice(0, 260);
+      return { title, preview };
+    });
+  };
 
   useEffect(() => {
     try {
@@ -79,6 +188,21 @@ export default function CodeReviewPage() {
       setKbCount(0);
     }
   }, [isKbOpen]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return;
+      const items = parsed
+        .filter((x): x is ReviewSnapshot => Boolean(x && typeof x === "object"))
+        .slice(0, 5);
+      setHistory(items);
+    } catch {
+      setHistory([]);
+    }
+  }, []);
 
   const diffTargetCode = useMemo(() => {
     const pick = (role: AgentRole) =>
@@ -169,30 +293,46 @@ export default function CodeReviewPage() {
     setRagMeta(null);
     setLastApplied(null);
     setAggregated(null);
+    setDraftAggregated(null);
     setFinalCode("");
     setShowAgentDetails(false);
+    setRagEvidence([]);
+    setDraftFinalCode("");
+    streamBufRef.current = {};
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
 
     const orchestrator = new CodeReviewOrchestrator();
     const fileName = "component.tsx";
     const language = "typescript";
 
     try {
+      const instruction = commandText.trim();
       const ctxRes = await buildReviewContext({
         code: originalCode,
         fileName,
         language,
         k: 4,
+        instruction,
       });
       setRagStatus(isOk(ctxRes) ? "done" : "error");
       const ctxText = isOk(ctxRes) ? ctxRes.data : "";
       const hits = ctxText ? ctxText.split("\n---\n").length : 0;
       setRagMeta({ hits, chars: ctxText.length });
+      if (ctxText) {
+        setRagEvidence(parseRagEvidence(ctxText));
+      }
+
+      const commander = instruction ? `【指挥指令】\n${instruction}` : "";
+      const context = [commander, ctxText].filter(Boolean).join("\n\n");
       const task: AgentTask = {
         id: uuidv4(),
         code: originalCode,
         language,
         fileName,
-        context: ctxText,
+        context,
       };
 
       const reviewResult = await orchestrator.runReview(
@@ -200,11 +340,64 @@ export default function CodeReviewPage() {
         (role, status) => {
           setAgentStatus((prev) => ({ ...prev, [role]: status }));
         },
+        (role, chunk) => {
+          if (role !== AgentRole.REFACTORER) return;
+          const cur2 = streamBufRef.current[role] || "";
+          streamBufRef.current[role] = (cur2 + chunk).slice(-12000);
+          const draft = extractSuggestedCodeSoFar(streamBufRef.current[role]);
+          setDraftFinalCode(draft.slice(-20000));
+        },
+        (role, partialResult) => {
+          setResults((prev) => {
+            const next = prev.filter((r) => r.role !== role);
+            next.push(partialResult as AgentResult);
+            next.sort((a, b) => String(a.role).localeCompare(String(b.role)));
+            const aggRes = aggregateAgentResults(next);
+            if (isOk(aggRes)) {
+              setDraftAggregated(aggRes.data);
+              setCommandText((cur) =>
+                cur.trim() ? cur : aggRes.data.nextCommand,
+              );
+            }
+            return next;
+          });
+        },
       );
       setResults(reviewResult.results);
       setFinalCode(reviewResult.finalSuggestion || "");
       const aggRes = aggregateAgentResults(reviewResult.results);
-      setAggregated(isOk(aggRes) ? aggRes.data : null);
+      if (isOk(aggRes)) {
+        setAggregated(aggRes.data);
+        setDraftAggregated(null);
+        setCommandText((prev) =>
+          prev.trim() ? prev : aggRes.data.nextCommand,
+        );
+        const dims = aggRes.data.dimensions ?? [];
+        const overallScore =
+          dims.length > 0
+            ? Math.round(dims.reduce((a, d) => a + d.score, 0) / dims.length)
+            : 0;
+        const snap: ReviewSnapshot = {
+          id: uuidv4(),
+          ts: Date.now(),
+          code: originalCode,
+          commandText: instruction,
+          finalCode: reviewResult.finalSuggestion || "",
+          aggregated: aggRes.data as unknown,
+          overallScore,
+          mustFixCount: aggRes.data.mustFix?.length ?? 0,
+          ragMeta: { hits, chars: ctxText.length },
+        };
+        setHistory((prev) => {
+          const next = [snap, ...prev].slice(0, 5);
+          try {
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+      } else {
+        setAggregated(null);
+      }
       setHasDiff(
         reviewResult.results.some(
           (r) =>
@@ -217,6 +410,40 @@ export default function CodeReviewPage() {
     } finally {
       setIsReviewing(false);
     }
+  };
+
+  const restoreSnapshot = (id: string) => {
+    const snap = history.find((h) => h.id === id);
+    if (!snap) return;
+    setCode(snap.code);
+    setReviewedCode(snap.code);
+    setCommandText(snap.commandText);
+    setFinalCode(snap.finalCode);
+    setAggregated(snap.aggregated as AggregatedReview);
+    setResults([]);
+    setIsDiffOpen(false);
+    setShowAgentDetails(false);
+    setLastApplied(null);
+    setLayoutMode("split");
+    setTimeout(() => {
+      editorRef.current?.focus();
+    }, 0);
+  };
+
+  const openSnapshotDiff = (id: string) => {
+    const snap = history.find((h) => h.id === id);
+    if (!snap) return;
+    setReviewedCode(snap.code);
+    setFinalCode(snap.finalCode);
+    setDiffTargetRole("FINAL");
+    setIsDiffOpen(true);
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    try {
+      localStorage.removeItem(HISTORY_KEY);
+    } catch {}
   };
 
   const applyToEditor = (nextCode: string, from: AppliedFrom) => {
@@ -371,14 +598,238 @@ export default function CodeReviewPage() {
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
             <WorkflowStrip model={steps} />
+            {history.length > 0 ? (
+              <ReviewHistoryPanel
+                history={history}
+                onRestore={restoreSnapshot}
+                onOpenDiff={openSnapshotDiff}
+                onClear={clearHistory}
+              />
+            ) : null}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-zinc-400">
+                    RAG 检索
+                  </div>
+                  <div className="mt-1 text-[10px] text-zinc-500">
+                    {ragStatus === "running"
+                      ? "检索中…"
+                      : ragStatus === "error"
+                        ? "检索失败"
+                        : ragMeta
+                          ? `命中 ${ragMeta.hits} / ${ragMeta.chars} chars`
+                          : kbCount > 0
+                            ? "待检索"
+                            : "知识库为空"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                    onClick={() => setIsKbOpen(true)}
+                  >
+                    打开知识库
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                    onClick={async () => {
+                      try {
+                        setMcpShotError(null);
+                        const url =
+                          typeof window !== "undefined"
+                            ? `${window.location.origin}/code-review`
+                            : "http://localhost:3000/code-review";
+                        const resp = await fetch(
+                          `/api/mcp/screenshot?url=${encodeURIComponent(url)}`,
+                          { method: "GET" },
+                        );
+                        const data = await resp.json();
+                        if (data?.ok) setMcpScreenshot(data.dataUrl || null);
+                        else setMcpShotError(data?.error || "截图失败");
+                      } catch (e: any) {
+                        setMcpShotError(e.message || "调用失败");
+                      }
+                    }}
+                  >
+                    截图（MCP）
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                    onClick={async () => {
+                      try {
+                        setMcpLhError(null);
+                        setMcpLhScores(null);
+                        const url =
+                          typeof window !== "undefined"
+                            ? `${window.location.origin}/code-review`
+                            : "http://localhost:3000/code-review";
+                        const resp = await fetch(
+                          `/api/mcp/lighthouse?url=${encodeURIComponent(url)}`,
+                          { method: "GET" },
+                        );
+                        const data = await resp.json();
+                        if (data?.ok) {
+                          setMcpLhScores({
+                            accessibility: data.scores?.accessibility,
+                            seo: data.scores?.seo,
+                            bestPractices: data.scores?.bestPractices,
+                            suggestions: data.suggestions || [],
+                          });
+                        } else {
+                          setMcpLhError(data?.error || "审计失败");
+                        }
+                      } catch (e: any) {
+                        setMcpLhError(e.message || "调用失败");
+                      }
+                    }}
+                    title="通过 MCP（服务端代理）获取 Lighthouse 审计"
+                  >
+                    性能分数（MCP）
+                  </button>
+                </div>
+              </div>
+              {mcpShotError ? (
+                <div className="mt-2 text-[11px] text-red-400">
+                  {mcpShotError}
+                </div>
+              ) : null}
+              {mcpScreenshot ? (
+                <div className="mt-3 rounded border border-zinc-800 bg-zinc-950/30 p-2">
+                  <div className="text-[10px] text-zinc-500 mb-1">
+                    页面截图（MCP 本地适配）
+                  </div>
+                  <img
+                    src={mcpScreenshot}
+                    alt="mcp-screenshot"
+                    className="rounded border border-zinc-800 max-h-64 object-contain"
+                  />
+                </div>
+              ) : null}
+              {mcpLhError ? (
+                <div className="mt-2 text-[11px] text-red-400">
+                  {mcpLhError}
+                </div>
+              ) : null}
+              {mcpLhScores ? (
+                <div className="mt-3 rounded border border-zinc-800 bg-zinc-950/30 p-2">
+                  <div className="text-[10px] text-zinc-500 mb-2">
+                    Lighthouse 审计（MCP）
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                      <div className="text-[10px] text-zinc-500">可访问性</div>
+                      <div className="text-sm font-semibold text-zinc-200 tabular-nums">
+                        {mcpLhScores.accessibility ?? "-"}
+                      </div>
+                    </div>
+                    <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                      <div className="text-[10px] text-zinc-500">最佳实践</div>
+                      <div className="text-sm font-semibold text-zinc-200 tabular-nums">
+                        {mcpLhScores.bestPractices ?? "-"}
+                      </div>
+                    </div>
+                    <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                      <div className="text-[10px] text-zinc-500">SEO</div>
+                      <div className="text-sm font-semibold text-zinc-200 tabular-nums">
+                        {mcpLhScores.seo ?? "-"}
+                      </div>
+                    </div>
+                  </div>
+                  {mcpLhScores.suggestions &&
+                  mcpLhScores.suggestions.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {mcpLhScores.suggestions.slice(0, 5).map((s, i) => (
+                        <div
+                          key={`${s.id}-${i}`}
+                          className="text-[11px] text-zinc-400"
+                        >
+                          • {s.title}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {isRagExplainOpen && ragEvidence.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {ragEvidence.map((e, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded border border-zinc-800 bg-zinc-950/20 p-2"
+                    >
+                      <div className="text-[10px] text-zinc-300">{e.title}</div>
+                      <div className="mt-1 text-[10px] text-zinc-500 line-clamp-3">
+                        {e.preview}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             {aggregated ? (
-              <SummaryCard review={aggregated} />
+              <SummaryCard
+                review={aggregated}
+                commandText={commandText}
+                onCommandTextChange={setCommandText}
+                onUseRecommended={() => setCommandText(aggregated.nextCommand)}
+                ragEvidence={ragEvidence}
+                isDraft={false}
+              />
+            ) : draftAggregated ? (
+              <SummaryCard
+                review={draftAggregated}
+                commandText={commandText}
+                onCommandTextChange={setCommandText}
+                onUseRecommended={() =>
+                  setCommandText(draftAggregated.nextCommand)
+                }
+                ragEvidence={ragEvidence}
+                isDraft={true}
+              />
             ) : (
               <ScoreCard title="评分概览" items={scores} />
             )}
 
+            {/* 过程输出已移除 */}
+
+            {!finalCode && isReviewing && draftFinalCode ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-zinc-400">
+                      最终建议（流式生成中）
+                    </div>
+                    <div className="mt-1 text-[10px] text-zinc-500">
+                      代码正在生成，完成后可直接 Diff / 应用
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 rounded-lg overflow-hidden border border-zinc-800 shadow-2xl">
+                  <SyntaxHighlighter
+                    language="typescript"
+                    style={oneDark}
+                    customStyle={{
+                      margin: 0,
+                      padding: "1rem",
+                      fontSize: "12px",
+                      background: "#0b0b0f",
+                    }}
+                    lineProps={() => ({
+                      style: { display: "block", background: "transparent" },
+                    })}
+                  >
+                    {draftFinalCode}
+                  </SyntaxHighlighter>
+                </div>
+              </div>
+            ) : null}
+
             {finalCode ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-zinc-400">
@@ -413,8 +864,11 @@ export default function CodeReviewPage() {
                       margin: 0,
                       padding: "1rem",
                       fontSize: "12px",
-                      background: "#09090b",
+                      background: "#0b0b0f",
                     }}
+                    lineProps={() => ({
+                      style: { display: "block", background: "transparent" },
+                    })}
                   >
                     {finalCode}
                   </SyntaxHighlighter>

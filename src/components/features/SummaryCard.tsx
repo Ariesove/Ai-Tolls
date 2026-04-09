@@ -35,8 +35,21 @@ const ItemRow: React.FC<{ item: AggregatedItem }> = ({ item }) => {
 
 export const SummaryCard: React.FC<{
   review: AggregatedReview;
-}> = ({ review }) => {
+  commandText: string;
+  onCommandTextChange: (text: string) => void;
+  onUseRecommended: () => void;
+  ragEvidence?: { title: string; preview: string }[];
+  isDraft?: boolean;
+}> = ({
+  review,
+  commandText,
+  onCommandTextChange,
+  onUseRecommended,
+  ragEvidence,
+  isDraft,
+}) => {
   const [openDetails, setOpenDetails] = useState(false);
+  const [openRag, setOpenRag] = useState(false);
   const cmd = review.nextCommand;
   const canCopy = typeof navigator !== "undefined" && !!navigator.clipboard;
   const dims = review.dimensions;
@@ -53,7 +66,9 @@ export const SummaryCard: React.FC<{
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-zinc-400">总览（指挥视角）</div>
+        <div className="text-xs font-medium text-zinc-400">
+          总览（指挥视角）{isDraft ? " · 生成中" : ""}
+        </div>
         <div className="flex items-center gap-2">
           <div className="rounded-full border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-400">
             必做 {review.mustFix.length}
@@ -64,6 +79,75 @@ export const SummaryCard: React.FC<{
           <div className={cn("text-sm font-semibold tabular-nums", overallTone)}>{overall}</div>
         </div>
       </div>
+
+      <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/30 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+            指挥指令（参与下一轮整合）
+          </div>
+          <button
+            type="button"
+            className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+            onClick={onUseRecommended}
+          >
+            使用推荐
+          </button>
+        </div>
+        <input
+          value={commandText}
+          onChange={(e) => onCommandTextChange(e.target.value)}
+          placeholder="例如：保持行为不变；优先修复 Hooks 与类型；只做必要性能优化；不改 API"
+          className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950/40 px-3 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+        />
+        <div className="mt-2 flex flex-wrap gap-2">
+          {[
+            "保持业务行为不变",
+            "不改 API 接口",
+            "优先修复 Hooks 依赖",
+            "优先提升类型安全",
+            "只做必要性能优化",
+          ].map((t) => (
+            <button
+              key={t}
+              type="button"
+              className="rounded-full border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+              onClick={() => {
+                const cur = commandText.trim();
+                onCommandTextChange(cur ? `${cur}，${t}` : t);
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {ragEvidence && ragEvidence.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/30 p-3">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between text-left"
+            onClick={() => setOpenRag((v) => !v)}
+          >
+            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+              RAG 命中（Top {ragEvidence.length}）
+            </div>
+            <div className="text-[10px] text-zinc-500">{openRag ? "收起" : "展开"}</div>
+          </button>
+          {openRag ? (
+            <div className="mt-2 space-y-2">
+              {ragEvidence.map((e, idx) => (
+                <div key={idx} className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                  <div className="text-[10px] text-zinc-300">{e.title}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500 line-clamp-3">
+                    {e.preview}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
         {review.dimensions.map((d) => (

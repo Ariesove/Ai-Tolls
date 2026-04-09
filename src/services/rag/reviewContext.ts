@@ -15,6 +15,7 @@ export interface BuildReviewContextInput {
   fileName?: string;
   language: string;
   k?: number;
+  instruction?: string;
 }
 
 export const buildReviewContext = async (
@@ -24,7 +25,9 @@ export const buildReviewContext = async (
     const k = typeof input.k === "number" && input.k > 0 ? input.k : 4;
     const fileName = input.fileName ?? "unknown";
     const codeSnippet = normalizeForQuery(input.code, 1800);
-    const query = `目标：代码审查与重构。语言：${input.language}。重点：命名、Hooks 依赖、类型安全、可维护性、性能。文件：${fileName}。代码片段：${codeSnippet}`;
+    const instruction = input.instruction?.trim();
+    const query = `目标：代码审查与重构。语言：${input.language}。重点：命名、Hooks 依赖、类型安全、可维护性、性能。${instruction ? `指挥指令：${normalizeForQuery(instruction, 400)}。` : ""
+      }文件：${fileName}。代码片段：${codeSnippet}`;
 
     const retrieved = await search(query, k);
     const blocks = retrieved.map((r, idx) => {
@@ -70,4 +73,3 @@ export const buildReviewContext = async (
     return Err(`构建 RAG 上下文失败：${(e as Error).message}`);
   }
 };
-
