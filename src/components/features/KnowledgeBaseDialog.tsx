@@ -115,20 +115,16 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
     setError("");
 
     try {
-      const apiKey =
-        localStorage.getItem("OPENAI_API_KEY") ??
-        "sk-4EVaiOOCO95SvVh78XPgajAnVNB7lKcpM2tuGIRFScudhMvC";
-
-      if (apiKey) {
-        // Use Real Engine (Functional RAG)
-        await addText(text, {
-          source: fileName ? "file-upload" : "user-paste",
-          filename: fileName || undefined,
-        });
-      } else {
-        // Use Mock Engine
-        // await mockRAGEngine.ingest(text, "user-paste");
+      const apiKey = localStorage.getItem("OPENAI_API_KEY") || "";
+      if (!apiKey) {
+        setError("请先在 Settings 中配置 API Key。");
+        return;
       }
+
+      await addText(text, {
+        source: fileName ? "file-upload" : "user-paste",
+        filename: fileName || undefined,
+      });
 
       setSuccess(true);
       // setText("");
@@ -137,9 +133,13 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
         // Don't close immediately so user can test search
         // onClose();
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to ingest text", err);
-      setError(err.message || "Failed to add to knowledge base.");
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message?: unknown }).message ?? "")
+          : "";
+      setError(msg || "Failed to add to knowledge base.");
     } finally {
       setIsIngesting(false);
     }

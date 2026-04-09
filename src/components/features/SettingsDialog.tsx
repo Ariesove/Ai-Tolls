@@ -13,7 +13,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   onClose,
 }) => {
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
+  const [baseUrl, setBaseUrl] = useState("https://api.302.ai/v1");
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -21,7 +21,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     if (isOpen) {
       setApiKey(localStorage.getItem("OPENAI_API_KEY") || "");
       setBaseUrl(
-        localStorage.getItem("OPENAI_BASE_URL") || "https://api.openai.com/v1",
+        localStorage.getItem("OPENAI_BASE_URL") || "https://api.302.ai/v1",
       );
     }
   }, [isOpen]);
@@ -89,9 +89,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             </label>
             <Input
               type="text"
-              value={baseUrl ?? "https://api.openai.com/v1"}
+              value={baseUrl ?? "https://api.302.ai/v1"}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com/v1"
+              placeholder="https://api.302.ai/v1"
               className="bg-zinc-950 border-zinc-800 text-zinc-100"
             />
             <p className="text-xs text-zinc-500">

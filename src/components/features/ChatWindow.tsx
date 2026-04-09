@@ -105,8 +105,7 @@ export const ChatWindow: React.FC = () => {
     try {
       // Check if OpenAI Key is set to determine which engine to use
       const apiKey =
-        localStorage.getItem("OPENAI_API_KEY") ||
-        "sk-4EVaiOOCO95SvVh78XPgajAnVNB7lKcpM2tuGIRFScudhMvC";
+        localStorage.getItem("OPENAI_API_KEY") || "";
       const useRealEngine = !!apiKey;
       if (useRealEngine) {
         console.log("useRealEngine");

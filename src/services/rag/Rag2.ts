@@ -19,7 +19,7 @@ export interface StoredDocument {
 let docs: StoredDocument[] = [];
 let embeddings: OpenAIEmbeddings | null = null;
 // EMBEDDING=text-embedding-ada-002
-// AI_KEY=sk-4EVaiOOCO95SvVh78XPgajAnVNB7lKcpM2tuGIRFScudhMvC
+// AI_KEY=sk-...
 // AI_BASE_URL=https://api.302.ai/v1
 // MODEL=claude-3-7-sonnet-latest
 const getEmbeddings = () => {
