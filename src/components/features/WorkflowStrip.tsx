@@ -1,7 +1,17 @@
 "use client";
 
 import React from "react";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  XCircle,
+  Database,
+  Search,
+  GitMerge,
+  Diff,
+  ArrowDown,
+  ArrowRight,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type StepStatus = "idle" | "running" | "done" | "error";
@@ -18,26 +28,120 @@ export interface WorkflowStripModel {
   onOpenKb?: () => void;
 }
 
-const Icon: React.FC<{ status: StepStatus }> = ({ status }) => {
-  if (status === "running") {
-    return <Loader2 className="h-4 w-4 animate-spin text-amber-400" />;
-  }
-  if (status === "done") {
-    return <CheckCircle2 className="h-4 w-4 text-green-400" />;
-  }
-  if (status === "error") {
-    return <XCircle className="h-4 w-4 text-red-400" />;
-  }
-  return <div className="h-4 w-4 rounded-full border border-zinc-700" />;
+type StatusTone = {
+  dot: string;
+  border: string;
+  bg: string;
+  text: string;
+  rail: string;
 };
 
-const Node: React.FC<{
+const tone = (s: StepStatus): StatusTone => {
+  if (s === "running")
+    return {
+      dot: "bg-amber-400",
+      border: "border-amber-500/40",
+      bg: "bg-amber-500/8",
+      text: "text-amber-100",
+      rail: "bg-amber-400/60",
+    };
+  if (s === "done")
+    return {
+      dot: "bg-green-400",
+      border: "border-green-500/40",
+      bg: "bg-green-500/8",
+      text: "text-green-100",
+      rail: "bg-green-400/60",
+    };
+  if (s === "error")
+    return {
+      dot: "bg-red-400",
+      border: "border-red-500/40",
+      bg: "bg-red-500/8",
+      text: "text-red-100",
+      rail: "bg-red-400/60",
+    };
+  return {
+    dot: "bg-zinc-600",
+    border: "border-zinc-800",
+    bg: "bg-zinc-900/20",
+    text: "text-zinc-300",
+    rail: "bg-zinc-700",
+  };
+};
+
+const StatusDot: React.FC<{ s: StepStatus; pulse?: boolean }> = ({
+  s,
+  pulse,
+}) => {
+  const t = tone(s);
+  return (
+    <span
+      className={cn(
+        "inline-block h-2 w-2 shrink-0 rounded-full",
+        t.dot,
+        s === "running" && "animate-pulse",
+        pulse && "shadow-[0_0_6px_rgba(251,191,36,0.5)]",
+      )}
+    />
+  );
+};
+
+const StatusIcon: React.FC<{ s: StepStatus }> = ({ s }) => {
+  if (s === "running")
+    return <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" />;
+  if (s === "done")
+    return <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />;
+  if (s === "error") return <XCircle className="h-3.5 w-3.5 text-red-400" />;
+  return <span className="text-zinc-700">—</span>;
+};
+
+interface RailProps {
+  status: StepStatus;
+  direction?: "h" | "v";
+  len?: number;
+}
+
+const Rail: React.FC<RailProps> = ({ status, direction = "h", len = 24 }) => {
+  const t = tone(status);
+  if (direction === "v") {
+    return (
+      <div
+        className={cn("w-[2px] shrink-0 rounded-full", t.rail, "mx-auto")}
+        style={{ height: len }}
+      />
+    );
+  }
+  return (
+    <div
+      className={cn(
+        "h-[2px] shrink-0 rounded-full flex-1 min-w-[16px]",
+        t.rail,
+      )}
+    />
+  );
+};
+
+interface StepCardProps {
   title: string;
   subtitle?: string;
   status: StepStatus;
   meta?: string;
+  icon?: React.ReactNode;
   onClick?: () => void;
-}> = ({ title, subtitle, status, meta, onClick }) => {
+  badge?: string;
+}
+
+const StepCard: React.FC<StepCardProps> = ({
+  title,
+  subtitle,
+  status,
+  meta,
+  icon,
+  onClick,
+  badge,
+}) => {
+  const t = tone(status);
   const clickable = typeof onClick === "function";
   return (
     <button
@@ -45,71 +149,220 @@ const Node: React.FC<{
       onClick={onClick}
       disabled={!clickable}
       className={cn(
-        "flex min-w-0 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 py-2 text-left",
-        clickable ? "hover:border-zinc-700 hover:bg-zinc-900/50" : "cursor-default",
+        "relative flex w-full min-w-0 items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all",
+        t.border,
+        t.bg,
+        clickable
+          ? "cursor-pointer hover:border-zinc-600 hover:bg-zinc-900/40"
+          : "cursor-default",
+        status === "running" && "shadow-[0_0_0_1px_rgba(251,191,36,0.15)]",
       )}
     >
-      <Icon status={status} />
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="truncate text-xs font-semibold text-zinc-200">{title}</div>
-          {meta ? <div className="shrink-0 text-[10px] text-zinc-500">{meta}</div> : null}
-        </div>
-        {subtitle ? <div className="text-[10px] text-zinc-500">{subtitle}</div> : null}
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950/50">
+        {icon ? (
+          <span className="text-zinc-400">{icon}</span>
+        ) : (
+          <StatusIcon s={status} />
+        )}
       </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className={cn("truncate text-xs font-semibold", t.text)}>
+            {title}
+          </span>
+          {meta && (
+            <span className="shrink-0 rounded-full border border-zinc-800 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] text-zinc-500 tabular-nums">
+              {meta}
+            </span>
+          )}
+          {badge && (
+            <span className="shrink-0 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-300">
+              {badge}
+            </span>
+          )}
+        </div>
+        {subtitle && (
+          <div className="mt-0.5 truncate text-[10px] text-zinc-500">
+            {subtitle}
+          </div>
+        )}
+      </div>
+      {status === "running" && (
+        <span className="absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent animate-pulse" />
+      )}
     </button>
   );
 };
 
-const Arrow = () => <div className="hidden h-px flex-1 bg-zinc-800 md:block" />;
+export const WorkflowStrip: React.FC<{ model: WorkflowStripModel }> = ({
+  model,
+}) => {
+  const hasRefactor = Boolean(model.refactorStatus);
 
-export const WorkflowStrip: React.FC<{ model: WorkflowStripModel }> = ({ model }) => {
+  const overallRunning = [
+    model.kbStatus,
+    model.retrieveStatus,
+    model.linterStatus,
+    model.architectStatus,
+    model.refactorStatus,
+    model.diffStatus,
+  ].some((s) => s === "running");
+  const overallDone = [
+    model.kbStatus,
+    model.retrieveStatus,
+    model.linterStatus,
+    model.architectStatus,
+    model.diffStatus,
+  ].every((s) => s === "done");
+  const overallError = [
+    model.kbStatus,
+    model.retrieveStatus,
+    model.linterStatus,
+    model.architectStatus,
+    model.refactorStatus,
+    model.diffStatus,
+  ].some((s) => s === "error");
+  const overallStatus: StepStatus = overallError
+    ? "error"
+    : overallRunning
+      ? "running"
+      : overallDone
+        ? "done"
+        : "idle";
+
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-zinc-400">工作流</div>
-        <div className="text-[10px] text-zinc-500">先后 + 并发</div>
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <StatusDot s={overallStatus} pulse />
+          <span className="text-xs font-semibold text-zinc-300">PIPELINE</span>
+          <span className="text-[10px] text-zinc-600">多 Agent 协作</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              "rounded-full border px-2 py-0.5 text-[10px]",
+              overallStatus === "running"
+                ? "border-amber-500/30 text-amber-400"
+                : overallStatus === "done"
+                  ? "border-green-500/30 text-green-400"
+                  : overallStatus === "error"
+                    ? "border-red-500/30 text-red-400"
+                    : "border-zinc-800 text-zinc-500",
+            )}
+          >
+            {overallStatus === "running"
+              ? "运行中"
+              : overallStatus === "done"
+                ? "完成"
+                : overallStatus === "error"
+                  ? "异常"
+                  : "待机"}
+          </span>
+        </div>
       </div>
 
-      <div className="mt-3 flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Node
-            title="RAG 解析"
-            subtitle="上传/切片入库"
-            status={model.kbStatus}
-            meta={model.kbMeta}
-            onClick={model.onOpenKb}
-          />
-          <Arrow />
-          <Node
-            title="RAG 检索"
-            subtitle="构建上下文"
-            status={model.retrieveStatus}
-            meta={model.retrieveMeta}
-          />
-          <Arrow />
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex items-center justify-between px-1">
-              <div className="text-[10px] font-medium text-zinc-500">并行审查</div>
-              <div className="text-[10px] text-zinc-600">同时启动</div>
-            </div>
-            <div className="relative flex min-w-0 flex-col gap-2 pl-3">
-              <div className="absolute bottom-1 left-0 top-1 w-px bg-zinc-800" />
-              <Node title="Linter" subtitle="规范/类型" status={model.linterStatus} />
-              <Node title="Architect" subtitle="架构/性能" status={model.architectStatus} />
+      <div className="flex flex-col gap-3">
+        {/* 阶段一：KB → RAG */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex flex-1 gap-2">
+              <div className="flex flex-col gap-2">
+                <StepCard
+                  title="RAG 解析"
+                  subtitle="上传 / 切片入库"
+                  status={model.kbStatus}
+                  meta={model.kbMeta}
+                  icon={<Database className="h-3.5 w-3.5" />}
+                  onClick={model.onOpenKb}
+                />
+              </div>
+              <Rail direction="v" len={52} />
+              <div className="flex flex-1 flex-col gap-2">
+                <StepCard
+                  title="RAG 检索"
+                  subtitle="构建上下文"
+                  status={model.retrieveStatus}
+                  meta={model.retrieveMeta}
+                  icon={<Search className="h-3.5 w-3.5" />}
+                />
+              </div>
             </div>
           </div>
-          <Arrow />
+        </div>
+
+        {/* 并行分叉指示 */}
+        <div className="flex items-center gap-1.5">
+          <Rail status={model.linterStatus} />
+          <div className="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/40 px-2 py-0.5 text-[10px] text-zinc-500">
+            <ArrowDown className="h-3 w-3" />
+            并行分叉
+          </div>
+          <Rail status={model.architectStatus} />
+        </div>
+
+        {/* 阶段二：并行审查 Linter ⬇ Architect */}
+        <div className="grid grid-cols-2 gap-2">
+          <StepCard
+            title="Linter"
+            subtitle="规范 / 类型"
+            status={model.linterStatus}
+            icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+          />
+          <StepCard
+            title="Architect"
+            subtitle="架构 / 性能"
+            status={model.architectStatus}
+            icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+          />
+        </div>
+
+        {/* 并行合并指示 */}
+        {model.refactorStatus && (
+          <div className="flex items-center gap-1.5">
+            <Rail status={model.refactorStatus} />
+            <div className="flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400">
+              <GitMerge className="h-3 w-3" />
+              合并整合
+            </div>
+            <Rail status={model.refactorStatus} />
+          </div>
+        )}
+
+        {/* 阶段三：最终整合 / Diff */}
+        <div className="flex items-center gap-2">
           {model.refactorStatus ? (
             <>
-              <Node title="最终整合" subtitle="统一输出" status={model.refactorStatus} />
-              <Arrow />
+              <div className="flex flex-1 gap-2">
+                <StepCard
+                  title="最终整合"
+                  subtitle="统一输出"
+                  status={model.refactorStatus}
+                  icon={<GitMerge className="h-3.5 w-3.5" />}
+                />
+              </div>
+              <Rail status={model.diffStatus} />
+              <div className="flex flex-1 gap-2">
+                <StepCard
+                  title="Diff"
+                  subtitle="改动对比"
+                  status={model.diffStatus}
+                  icon={<Diff className="h-3.5 w-3.5" />}
+                />
+              </div>
             </>
-          ) : null}
-          <Node title="Diff" subtitle="改动对比" status={model.diffStatus} />
+          ) : (
+            <div className="flex flex-1 gap-2">
+              <StepCard
+                title="Diff"
+                subtitle="改动对比"
+                status={model.diffStatus}
+                icon={<Diff className="h-3.5 w-3.5" />}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
-
