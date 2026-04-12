@@ -21,6 +21,7 @@ export interface AgentTask {
   fileName?: string;       // 文件名（辅助 AI 理解上下文）
   language: string;        // 编程语言（typescript, javascript, react-tsx 等）
   context?: string;        // 额外的上下文信息（如已有的 RAG 知识片段）
+  instruction?: string;    // 用户显式输入的“指挥指令”（具备最高优先级）
 }
 
 export interface AgentResult {
@@ -33,7 +34,7 @@ export interface AgentResult {
 export interface IAgent {
   readonly role: AgentRole;
   readonly name: string;
-  
+
   /**
    * 执行审查任务
    * @param task 任务信息

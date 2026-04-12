@@ -77,11 +77,15 @@ export abstract class BaseAgent implements IAgent {
    * 默认用户提示词拼装
    */
   protected getUserPrompt(task: AgentTask): string {
+    const instruction = task.instruction
+      ? `\n【指挥指令 - 最高优先级】\n${task.instruction}\n`
+      : "";
+    const context = task.context ? `\n【上下文线索】\n${task.context}\n` : "";
+
     return `
 请审查以下代码 (${task.language}):
-文件名: ${task.fileName || '未知'}
-上下文: ${task.context || '无'}
-
+文件名: ${task.fileName || "未知"}
+${instruction}${context}
 代码内容:
 \`\`\`${task.language}
 ${task.code}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FunctionCallingHandler, processFunctionCall } from "../functionCalling";
-import * as toolsModule from "../tools";
+import { FunctionCallingHandler, processFunctionCall } from "./functionCalling";
+import * as toolsModule from "./tools";
 
 // Mock localStorage
 const localStorageMock = {
@@ -21,7 +21,7 @@ vi.mock("@langchain/openai", () => ({
   })),
 }));
 
-vi.mock("../tools", () => ({
+vi.mock("./tools", () => ({
   toolFunctions: {
     searchKnowledgeBase: vi.fn(),
     calculate: vi.fn(),

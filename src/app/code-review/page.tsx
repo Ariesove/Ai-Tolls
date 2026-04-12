@@ -1,7 +1,8 @@
 "use client";
 
-import React, { Ref, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { v4 as uuidv4 } from "uuid";
 import { CodeReviewOrchestrator } from "@/services/agents/Orchestrator";
 import { AgentTask, AgentRole, AgentResult } from "@/services/agents/types";
@@ -33,6 +34,8 @@ import {
   Sparkles,
   Settings,
   BookOpen,
+  FileText,
+  Boxes,
   Maximize2,
   Columns2,
 } from "lucide-react";
@@ -42,14 +45,56 @@ const ReactDiffViewer = dynamic(() => import("react-diff-viewer-continued"), {
 });
 
 type LayoutMode = "split" | "review";
+type RightTab = "overview" | "final" | "evidence" | "agents";
 type DiffTargetRole = AgentRole | "FINAL";
 type AppliedFrom = "LINTER" | "ARCHITECT" | "FINAL" | "DIFF";
 const HISTORY_KEY = "code_review_history_v1";
+
+const TabButton: React.FC<{
+  active: boolean;
+  label: string;
+  icon?: React.ReactNode;
+  meta?: string;
+  onClick: () => void;
+}> = ({ active, label, icon, meta, onClick }) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "relative inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+        "transition-colors",
+        active
+          ? "border-indigo-500/40 bg-indigo-500/10 text-zinc-100"
+          : "border-zinc-800 bg-zinc-950/20 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200",
+      ].join(" ")}
+    >
+      {icon ? <span className="text-zinc-300">{icon}</span> : null}
+      <span className="font-medium">{label}</span>
+      {meta ? (
+        <span
+          className={[
+            "ml-1 rounded-full border px-1.5 py-0.5 text-[10px] tabular-nums",
+            active
+              ? "border-indigo-500/30 text-indigo-200"
+              : "border-zinc-800 text-zinc-500",
+          ].join(" ")}
+        >
+          {meta}
+        </span>
+      ) : null}
+      {active ? (
+        <span className="pointer-events-none absolute inset-x-2 -bottom-[7px] h-[2px] rounded-full bg-gradient-to-r from-indigo-400/0 via-indigo-400/70 to-cyan-400/0" />
+      ) : null}
+    </button>
+  );
+};
 
 export default function CodeReviewPage() {
   const [code, setCode] = useState("");
   const [reviewedCode, setReviewedCode] = useState("");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
+  const [rightTab, setRightTab] = useState<RightTab>("overview");
   const [isReviewing, setIsReviewing] = useState(false);
   const [results, setResults] = useState<AgentResult[]>([]);
   const [finalCode, setFinalCode] = useState("");
@@ -57,7 +102,6 @@ export default function CodeReviewPage() {
   const [ragEvidence, setRagEvidence] = useState<
     Array<{ title: string; preview: string }>
   >([]);
-  const [isRagExplainOpen, setIsRagExplainOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<Record<string, string>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isKbOpen, setIsKbOpen] = useState(false);
@@ -286,6 +330,7 @@ export default function CodeReviewPage() {
     const originalCode = code;
     setReviewedCode(originalCode);
     setIsReviewing(true);
+    setRightTab("overview");
     setResults([]);
     setAgentStatus({});
     setHasDiff(false);
@@ -325,14 +370,13 @@ export default function CodeReviewPage() {
         setRagEvidence(parseRagEvidence(ctxText));
       }
 
-      const commander = instruction ? `【指挥指令】\n${instruction}` : "";
-      const context = [commander, ctxText].filter(Boolean).join("\n\n");
       const task: AgentTask = {
         id: uuidv4(),
         code: originalCode,
         language,
         fileName,
-        context,
+        context: ctxText,
+        instruction: instruction,
       };
 
       const reviewResult = await orchestrator.runReview(
@@ -365,6 +409,7 @@ export default function CodeReviewPage() {
       );
       setResults(reviewResult.results);
       setFinalCode(reviewResult.finalSuggestion || "");
+      if (reviewResult.finalSuggestion) setRightTab("final");
       const aggRes = aggregateAgentResults(reviewResult.results);
       if (isOk(aggRes)) {
         setAggregated(aggRes.data);
@@ -467,9 +512,12 @@ export default function CodeReviewPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+    <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+      <header className="relative flex items-center justify-between border-b border-zinc-800 bg-zinc-900/40 px-6 py-4 backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-0 opacity-40">
+          <div className="absolute -top-10 left-1/4 h-24 w-72 -translate-x-1/2 rounded-full bg-indigo-500/20 blur-3xl" />
+          <div className="absolute -top-10 left-2/3 h-24 w-72 -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
+        </div>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-500/10 rounded-lg">
             <Code2 className="w-6 h-6 text-indigo-400" />
@@ -529,447 +577,667 @@ export default function CodeReviewPage() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex overflow-hidden p-6 gap-6">
-        {/* Left: Editor Area */}
-        {layoutMode === "split" ? (
-          <div className="flex-1 flex flex-col min-w-0 bg-zinc-900/50 rounded-xl border border-zinc-800 overflow-hidden">
-            <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900 flex justify-between items-center gap-3">
-              <span className="text-xs font-medium text-zinc-400">
-                输入源代码 (TSX/TS)
-              </span>
-              {lastApplied ? (
-                <div className="flex items-center gap-2">
-                  <div className="text-[10px] text-zinc-500">
-                    已应用：{lastApplied.from}
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
-                    onClick={undoApply}
-                  >
-                    撤销
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <Textarea
-              ref={editorRef}
-              className="flex-1 w-full bg-transparent p-4 font-mono text-sm resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500/30 text-zinc-300 border-0"
-              placeholder="请在此粘贴你想重构的代码..."
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-            />
-          </div>
-        ) : null}
-
-        {/* Right: Results Area */}
+      <main className="flex-1 overflow-hidden p-6">
         <div
           className={
-            layoutMode === "split"
-              ? "flex-1 flex flex-col min-w-0 bg-zinc-900/50 rounded-xl border border-zinc-800 overflow-hidden"
-              : "w-full flex flex-col min-w-0 bg-zinc-900/50 rounded-xl border border-zinc-800 overflow-hidden"
+            layoutMode === "split" ? "grid h-full grid-cols-12 gap-6" : "h-full"
           }
         >
-          <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900 flex justify-between items-center">
-            <span className="text-xs font-medium text-zinc-400">
-              AI 审查报告与建议
-            </span>
-            <div className="flex gap-3">
-              {Object.entries(agentStatus).map(([role, status]) => (
-                <div
-                  key={role}
-                  className="flex items-center gap-1.5 text-[10px]"
-                >
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      status === "thinking"
-                        ? "bg-amber-500 animate-pulse"
-                        : status === "done"
-                          ? "bg-green-500"
-                          : "bg-red-500"
-                    }`}
-                  />
-                  <span className="text-zinc-500 uppercase">{role}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-            <WorkflowStrip model={steps} />
-            {history.length > 0 ? (
-              <ReviewHistoryPanel
-                history={history}
-                onRestore={restoreSnapshot}
-                onOpenDiff={openSnapshotDiff}
-                onClear={clearHistory}
-              />
-            ) : null}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
+          {layoutMode === "split" ? (
+            <section className="col-span-5 flex min-w-0 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/35">
+              <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-900/60 px-4 py-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-medium text-zinc-400">
-                    RAG 检索
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-zinc-500" />
+                    <div className="truncate text-xs font-semibold text-zinc-200">
+                      输入源代码（TSX/TS）
+                    </div>
                   </div>
                   <div className="mt-1 text-[10px] text-zinc-500">
-                    {ragStatus === "running"
-                      ? "检索中…"
-                      : ragStatus === "error"
-                        ? "检索失败"
-                        : ragMeta
-                          ? `命中 ${ragMeta.hits} / ${ragMeta.chars} chars`
-                          : kbCount > 0
-                            ? "待检索"
-                            : "知识库为空"}
+                    建议粘贴单文件组件；审查会自动并行分发到多个 Agent
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
-                    onClick={() => setIsKbOpen(true)}
-                  >
-                    打开知识库
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
-                    onClick={async () => {
-                      try {
-                        setMcpShotError(null);
-                        const url =
-                          typeof window !== "undefined"
-                            ? `${window.location.origin}/code-review`
-                            : "http://localhost:3000/code-review";
-                        const resp = await fetch(
-                          `/api/mcp/screenshot?url=${encodeURIComponent(url)}`,
-                          { method: "GET" },
-                        );
-                        const data = await resp.json();
-                        if (data?.ok) setMcpScreenshot(data.dataUrl || null);
-                        else setMcpShotError(data?.error || "截图失败");
-                      } catch (e: any) {
-                        setMcpShotError(e.message || "调用失败");
-                      }
-                    }}
-                  >
-                    截图（MCP）
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
-                    onClick={async () => {
-                      try {
-                        setMcpLhError(null);
-                        setMcpLhScores(null);
-                        const url =
-                          typeof window !== "undefined"
-                            ? `${window.location.origin}/code-review`
-                            : "http://localhost:3000/code-review";
-                        const resp = await fetch(
-                          `/api/mcp/lighthouse?url=${encodeURIComponent(url)}`,
-                          { method: "GET" },
-                        );
-                        const data = await resp.json();
-                        if (data?.ok) {
-                          setMcpLhScores({
-                            accessibility: data.scores?.accessibility,
-                            seo: data.scores?.seo,
-                            bestPractices: data.scores?.bestPractices,
-                            suggestions: data.suggestions || [],
-                          });
-                        } else {
-                          setMcpLhError(data?.error || "审计失败");
-                        }
-                      } catch (e: any) {
-                        setMcpLhError(e.message || "调用失败");
-                      }
-                    }}
-                    title="通过 MCP（服务端代理）获取 Lighthouse 审计"
-                  >
-                    性能分数（MCP）
-                  </button>
-                </div>
-              </div>
-              {mcpShotError ? (
-                <div className="mt-2 text-[11px] text-red-400">
-                  {mcpShotError}
-                </div>
-              ) : null}
-              {mcpScreenshot ? (
-                <div className="mt-3 rounded border border-zinc-800 bg-zinc-950/30 p-2">
-                  <div className="text-[10px] text-zinc-500 mb-1">
-                    页面截图（MCP 本地适配）
-                  </div>
-                  <img
-                    src={mcpScreenshot}
-                    alt="mcp-screenshot"
-                    className="rounded border border-zinc-800 max-h-64 object-contain"
-                  />
-                </div>
-              ) : null}
-              {mcpLhError ? (
-                <div className="mt-2 text-[11px] text-red-400">
-                  {mcpLhError}
-                </div>
-              ) : null}
-              {mcpLhScores ? (
-                <div className="mt-3 rounded border border-zinc-800 bg-zinc-950/30 p-2">
-                  <div className="text-[10px] text-zinc-500 mb-2">
-                    Lighthouse 审计（MCP）
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
-                      <div className="text-[10px] text-zinc-500">可访问性</div>
-                      <div className="text-sm font-semibold text-zinc-200 tabular-nums">
-                        {mcpLhScores.accessibility ?? "-"}
-                      </div>
+                {lastApplied ? (
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] text-zinc-500">
+                      已应用：{lastApplied.from}
                     </div>
-                    <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
-                      <div className="text-[10px] text-zinc-500">最佳实践</div>
-                      <div className="text-sm font-semibold text-zinc-200 tabular-nums">
-                        {mcpLhScores.bestPractices ?? "-"}
-                      </div>
-                    </div>
-                    <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
-                      <div className="text-[10px] text-zinc-500">SEO</div>
-                      <div className="text-sm font-semibold text-zinc-200 tabular-nums">
-                        {mcpLhScores.seo ?? "-"}
-                      </div>
-                    </div>
-                  </div>
-                  {mcpLhScores.suggestions &&
-                  mcpLhScores.suggestions.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {mcpLhScores.suggestions.slice(0, 5).map((s, i) => (
-                        <div
-                          key={`${s.id}-${i}`}
-                          className="text-[11px] text-zinc-400"
-                        >
-                          • {s.title}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {isRagExplainOpen && ragEvidence.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {ragEvidence.map((e, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded border border-zinc-800 bg-zinc-950/20 p-2"
+                    <button
+                      type="button"
+                      className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                      onClick={undoApply}
                     >
-                      <div className="text-[10px] text-zinc-300">{e.title}</div>
-                      <div className="mt-1 text-[10px] text-zinc-500 line-clamp-3">
-                        {e.preview}
-                      </div>
+                      撤销
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <Textarea
+                ref={editorRef}
+                className="flex-1 w-full resize-none border-0 bg-transparent p-4 font-mono text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                placeholder="请在此粘贴你想审查与重构的代码..."
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </section>
+          ) : null}
+
+          <section
+            className={
+              layoutMode === "split"
+                ? "col-span-7 flex min-w-0 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/35"
+                : "flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/35"
+            }
+          >
+            <div className="relative border-b border-zinc-800 bg-zinc-900/60 px-4 py-3">
+              <div className="pointer-events-none absolute inset-0 opacity-50">
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(63,63,70,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(63,63,70,0.14)_1px,transparent_1px)] bg-[size:26px_26px]" />
+              </div>
+              <div className="relative flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Boxes className="h-4 w-4 text-zinc-500" />
+                    <div className="text-xs font-semibold text-zinc-200">
+                      协作面板（多 Agent 审查与整合）
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[10px] text-zinc-500">
+                    总览与最终建议支持流式更新；不展示过程输出
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {Object.entries(agentStatus).map(([role, status]) => (
+                    <div
+                      key={role}
+                      className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px]"
+                    >
+                      <div
+                        className={[
+                          "h-1.5 w-1.5 rounded-full",
+                          status === "thinking"
+                            ? "bg-amber-500 animate-pulse"
+                            : status === "done"
+                              ? "bg-green-500"
+                              : status === "error"
+                                ? "bg-red-500"
+                                : "bg-zinc-600",
+                        ].join(" ")}
+                      />
+                      <span className="text-zinc-500 uppercase">{role}</span>
                     </div>
                   ))}
                 </div>
-              ) : null}
-            </div>
-            {aggregated ? (
-              <SummaryCard
-                review={aggregated}
-                commandText={commandText}
-                onCommandTextChange={setCommandText}
-                onUseRecommended={() => setCommandText(aggregated.nextCommand)}
-                ragEvidence={ragEvidence}
-                isDraft={false}
-              />
-            ) : draftAggregated ? (
-              <SummaryCard
-                review={draftAggregated}
-                commandText={commandText}
-                onCommandTextChange={setCommandText}
-                onUseRecommended={() =>
-                  setCommandText(draftAggregated.nextCommand)
-                }
-                ragEvidence={ragEvidence}
-                isDraft={true}
-              />
-            ) : (
-              <ScoreCard title="评分概览" items={scores} />
-            )}
-
-            {/* 过程输出已移除 */}
-
-            {!finalCode && isReviewing && draftFinalCode ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-zinc-400">
-                      最终建议（流式生成中）
-                    </div>
-                    <div className="mt-1 text-[10px] text-zinc-500">
-                      代码正在生成，完成后可直接 Diff / 应用
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 rounded-lg overflow-hidden border border-zinc-800 shadow-2xl">
-                  <SyntaxHighlighter
-                    language="typescript"
-                    style={oneDark}
-                    customStyle={{
-                      margin: 0,
-                      padding: "1rem",
-                      fontSize: "12px",
-                      background: "#0b0b0f",
-                    }}
-                    lineProps={() => ({
-                      style: { display: "block", background: "transparent" },
-                    })}
-                  >
-                    {draftFinalCode}
-                  </SyntaxHighlighter>
-                </div>
               </div>
-            ) : null}
+            </div>
 
-            {finalCode ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-zinc-400">
-                      最终建议（推荐）
-                    </div>
-                    <div className="mt-1 text-[10px] text-zinc-500">
-                      已整合并行审查结论，默认只看这一份 Diff
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
+            <div className="border-b border-zinc-800 bg-zinc-950/20 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <TabButton
+                    active={rightTab === "overview"}
+                    label="总览"
+                    icon={<Sparkles className="h-4 w-4" />}
+                    onClick={() => setRightTab("overview")}
+                    meta={
+                      aggregated
+                        ? `${aggregated.mustFix.length}/${aggregated.shouldImprove.length}`
+                        : undefined
+                    }
+                  />
+                  <TabButton
+                    active={rightTab === "final"}
+                    label="最终建议"
+                    icon={<Code2 className="h-4 w-4" />}
+                    onClick={() => setRightTab("final")}
+                    meta={finalCode ? "READY" : isReviewing ? "..." : undefined}
+                  />
+                  <TabButton
+                    active={rightTab === "evidence"}
+                    label="证据"
+                    icon={<BookOpen className="h-4 w-4" />}
+                    onClick={() => setRightTab("evidence")}
+                    meta={
+                      ragMeta
+                        ? `${ragMeta.hits}`
+                        : kbCount
+                          ? `${kbCount}`
+                          : undefined
+                    }
+                  />
+                  <TabButton
+                    active={rightTab === "agents"}
+                    label="Agents"
+                    icon={<AlertCircle className="h-4 w-4" />}
+                    onClick={() => setRightTab("agents")}
+                    meta={results.length ? `${results.length}` : undefined}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {finalCode ? (
                     <button
                       type="button"
-                      className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
-                      onClick={() => applyToEditor(finalCode, "FINAL")}
-                    >
-                      应用到输入
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                      className="rounded-md border border-zinc-800 bg-zinc-950/30 px-3 py-2 text-xs text-zinc-200 hover:border-zinc-700"
                       onClick={() => setIsDiffOpen(true)}
                     >
                       打开 Diff
                     </button>
-                  </div>
-                </div>
-                <div className="mt-3 rounded-lg overflow-hidden border border-zinc-800 shadow-2xl">
-                  <SyntaxHighlighter
-                    language="typescript"
-                    style={oneDark}
-                    customStyle={{
-                      margin: 0,
-                      padding: "1rem",
-                      fontSize: "12px",
-                      background: "#0b0b0f",
-                    }}
-                    lineProps={() => ({
-                      style: { display: "block", background: "transparent" },
-                    })}
-                  >
-                    {finalCode}
-                  </SyntaxHighlighter>
+                  ) : null}
+                  {finalCode ? (
+                    <button
+                      type="button"
+                      className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-100 hover:border-indigo-400/40"
+                      onClick={() => applyToEditor(finalCode, "FINAL")}
+                    >
+                      应用最终代码
+                    </button>
+                  ) : null}
                 </div>
               </div>
-            ) : null}
+            </div>
 
-            {results.length === 0 && !isReviewing && (
-              <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-3">
-                <Sparkles className="w-12 h-12 opacity-20" />
-                <p className="text-sm">点击上方按钮，让 AI 专家为你审查代码</p>
-              </div>
-            )}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+              {rightTab === "overview" ? (
+                <div className="space-y-6">
+                  <WorkflowStrip model={steps} />
 
-            {isReviewing && results.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center space-y-4">
-                <Loader2 className="w-10 h-10 text-indigo-500 animate-spin opacity-50" />
-                <div className="space-y-1 text-center">
-                  <p className="text-sm text-zinc-400">
-                    正在分发任务至 Linter 与 Architect Agent...
-                  </p>
-                  <p className="text-xs text-zinc-500 italic">
-                    “通常深思熟虑的代码更可靠”
-                  </p>
+                  {history.length > 0 ? (
+                    <ReviewHistoryPanel
+                      history={history}
+                      onRestore={restoreSnapshot}
+                      onOpenDiff={openSnapshotDiff}
+                      onClear={clearHistory}
+                    />
+                  ) : null}
+
+                  {aggregated ? (
+                    <SummaryCard
+                      review={aggregated}
+                      commandText={commandText}
+                      onCommandTextChange={setCommandText}
+                      onUseRecommended={() =>
+                        setCommandText(aggregated.nextCommand)
+                      }
+                      ragEvidence={ragEvidence}
+                      isDraft={false}
+                    />
+                  ) : draftAggregated ? (
+                    <SummaryCard
+                      review={draftAggregated}
+                      commandText={commandText}
+                      onCommandTextChange={setCommandText}
+                      onUseRecommended={() =>
+                        setCommandText(draftAggregated.nextCommand)
+                      }
+                      ragEvidence={ragEvidence}
+                      isDraft={true}
+                    />
+                  ) : (
+                    <ScoreCard title="评分概览" items={scores} />
+                  )}
+
+                  {results.length === 0 && !isReviewing ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-8">
+                      <div className="mx-auto flex max-w-md flex-col items-center justify-center space-y-3 text-center text-zinc-500">
+                        <Sparkles className="h-12 w-12 opacity-20" />
+                        <div className="text-sm text-zinc-400">
+                          点击右上角开始，让多 Agent
+                          并行审查并输出最终可应用代码
+                        </div>
+                        <div className="text-xs text-zinc-600">
+                          总览与最终建议会在生成时实时刷新
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isReviewing && results.length === 0 ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-8">
+                      <div className="flex items-center justify-center gap-3">
+                        <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
+                        <div className="text-sm text-zinc-400">
+                          正在并行分发任务与构建上下文…
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            )}
+              ) : null}
 
-            {results.length > 0 ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-medium text-zinc-400">
-                    Agent 细节（可追溯）
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
-                    onClick={() => setShowAgentDetails((v) => !v)}
-                  >
-                    {showAgentDetails ? "收起" : "展开"}
-                  </button>
-                </div>
-
-                {showAgentDetails ? (
-                  <div className="mt-3 space-y-4">
-                    {results
-                      .filter((r) => r.role !== AgentRole.REFACTORER)
-                      .map((r) => (
-                        <div
-                          key={r.role}
-                          className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold text-zinc-200">
-                              {r.role === AgentRole.LINTER
-                                ? "Linter（规范/类型）"
-                                : "Architect（架构/性能）"}
-                            </div>
-                            <div className="text-[10px] text-zinc-500 uppercase">
-                              {r.role}
-                            </div>
+              {rightTab === "final" ? (
+                <div className="space-y-6">
+                  {!finalCode && isReviewing && draftFinalCode ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-zinc-400">
+                            最终建议（流式生成中）
                           </div>
-                          <div className="mt-2 space-y-2">
-                            {(Array.isArray(r.comments) ? r.comments : []).map(
-                              (comment, cIdx) => (
-                                <div
-                                  key={cIdx}
-                                  className="rounded border border-zinc-800 bg-zinc-950/30 p-2"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <AlertCircle
-                                      className={`w-4 h-4 mt-0.5 shrink-0 ${
-                                        comment.severity === "error"
-                                          ? "text-red-400"
-                                          : comment.severity === "warn"
-                                            ? "text-amber-400"
-                                            : "text-blue-400"
-                                      }`}
-                                    />
-                                    <div className="min-w-0">
-                                      <div className="text-xs text-zinc-200">
-                                        {comment.message}
-                                      </div>
-                                      {comment.suggestion ? (
-                                        <div className="mt-1 text-[11px] font-mono text-zinc-300">
-                                          {comment.suggestion}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </div>
-                              ),
-                            )}
+                          <div className="mt-1 text-[10px] text-zinc-500">
+                            代码正在生成，完成后可直接 Diff / 应用
                           </div>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-500">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            STREAM
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg overflow-hidden border border-zinc-800 shadow-2xl">
+                        <SyntaxHighlighter
+                          language="typescript"
+                          style={oneDark}
+                          customStyle={{
+                            margin: 0,
+                            padding: "1rem",
+                            fontSize: "12px",
+                            background: "#0b0b0f",
+                          }}
+                          lineProps={() => ({
+                            style: {
+                              display: "block",
+                              background: "transparent",
+                            },
+                          })}
+                        >
+                          {draftFinalCode}
+                        </SyntaxHighlighter>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {finalCode ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-zinc-400">
+                            最终建议（推荐）
+                          </div>
+                          <div className="mt-1 text-[10px] text-zinc-500">
+                            已整合并行审查结论，默认只看这一份 Diff
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                            onClick={() => applyToEditor(finalCode, "FINAL")}
+                          >
+                            应用到输入
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                            onClick={() => setIsDiffOpen(true)}
+                          >
+                            打开 Diff
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg overflow-hidden border border-zinc-800 shadow-2xl">
+                        <SyntaxHighlighter
+                          language="typescript"
+                          style={oneDark}
+                          customStyle={{
+                            margin: 0,
+                            padding: "1rem",
+                            fontSize: "12px",
+                            background: "#0b0b0f",
+                          }}
+                          lineProps={() => ({
+                            style: {
+                              display: "block",
+                              background: "transparent",
+                            },
+                          })}
+                        >
+                          {finalCode}
+                        </SyntaxHighlighter>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!finalCode && !isReviewing ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-8 text-center text-sm text-zinc-500">
+                      还没有最终建议。请先开始审查。
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {rightTab === "evidence" ? (
+                <div className="space-y-6">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-zinc-400">
+                          RAG / MCP 证据面板
+                        </div>
+                        <div className="mt-1 text-[10px] text-zinc-500">
+                          将“检索命中 + 本地审计”作为可追溯依据输入到多 Agent
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                          onClick={() => setIsKbOpen(true)}
+                        >
+                          打开知识库
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                          onClick={async () => {
+                            try {
+                              setMcpShotError(null);
+                              const url =
+                                typeof window !== "undefined"
+                                  ? `${window.location.origin}/code-review`
+                                  : "http://localhost:3000/code-review";
+                              const resp = await fetch(
+                                `/api/mcp/screenshot?url=${encodeURIComponent(url)}`,
+                                { method: "GET" },
+                              );
+                              const data = await resp.json();
+                              if (data?.ok)
+                                setMcpScreenshot(data.dataUrl || null);
+                              else setMcpShotError(data?.error || "截图失败");
+                            } catch (e: any) {
+                              setMcpShotError(e.message || "调用失败");
+                            }
+                          }}
+                        >
+                          截图（MCP）
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                          onClick={async () => {
+                            try {
+                              setMcpLhError(null);
+                              setMcpLhScores(null);
+                              const url =
+                                typeof window !== "undefined"
+                                  ? `${window.location.origin}/code-review`
+                                  : "http://localhost:3000/code-review";
+                              const resp = await fetch(
+                                `/api/mcp/lighthouse?url=${encodeURIComponent(url)}`,
+                                { method: "GET" },
+                              );
+                              const data = await resp.json();
+                              if (data?.ok) {
+                                setMcpLhScores({
+                                  accessibility: data.scores?.accessibility,
+                                  seo: data.scores?.seo,
+                                  bestPractices: data.scores?.bestPractices,
+                                  suggestions: data.suggestions || [],
+                                });
+                              } else {
+                                setMcpLhError(data?.error || "审计失败");
+                              }
+                            } catch (e: any) {
+                              setMcpLhError(e.message || "调用失败");
+                            }
+                          }}
+                          title="通过 MCP（服务端代理）获取 Lighthouse 审计"
+                        >
+                          性能分数（MCP）
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/30 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                              RAG 检索状态
+                            </div>
+                            <div className="mt-1 text-xs text-zinc-300">
+                              {ragStatus === "running"
+                                ? "检索中…"
+                                : ragStatus === "error"
+                                  ? "检索失败"
+                                  : ragMeta
+                                    ? `命中 ${ragMeta.hits} / ${ragMeta.chars} chars`
+                                    : kbCount > 0
+                                      ? "待检索"
+                                      : "知识库为空"}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-[10px] text-zinc-500 tabular-nums">
+                            {ragMeta ? `${ragMeta.hits}` : "-"}
+                          </div>
+                        </div>
+                        {ragEvidence.length > 0 ? (
+                          <div className="mt-3 space-y-2">
+                            {ragEvidence.map((e, idx) => (
+                              <div
+                                key={idx}
+                                className="rounded border border-zinc-800 bg-zinc-950/20 p-2"
+                              >
+                                <div className="text-[10px] text-zinc-300">
+                                  {e.title}
+                                </div>
+                                <div className="mt-1 text-[10px] text-zinc-500 line-clamp-3">
+                                  {e.preview}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-[11px] text-zinc-600">
+                            暂无命中片段（或尚未运行审查）。
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/30 p-3">
+                        <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                          MCP 本地审计
+                        </div>
+                        {mcpShotError ? (
+                          <div className="mt-2 text-[11px] text-red-400">
+                            {mcpShotError}
+                          </div>
+                        ) : null}
+                        {mcpScreenshot ? (
+                          <div className="mt-3 rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                            <div className="mb-1 text-[10px] text-zinc-500">
+                              页面截图
+                            </div>
+                            <Image
+                              src={mcpScreenshot}
+                              alt="mcp-screenshot"
+                              width={960}
+                              height={540}
+                              unoptimized
+                              className="w-full max-h-56 rounded border border-zinc-800 object-contain"
+                            />
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[11px] text-zinc-600">
+                            可先点击“截图（MCP）”获取当前页面快照。
+                          </div>
+                        )}
+
+                        {mcpLhError ? (
+                          <div className="mt-2 text-[11px] text-red-400">
+                            {mcpLhError}
+                          </div>
+                        ) : null}
+                        {mcpLhScores ? (
+                          <div className="mt-3 rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                            <div className="mb-2 text-[10px] text-zinc-500">
+                              Lighthouse 审计
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                                <div className="text-[10px] text-zinc-500">
+                                  可访问性
+                                </div>
+                                <div className="text-sm font-semibold text-zinc-200 tabular-nums">
+                                  {mcpLhScores.accessibility ?? "-"}
+                                </div>
+                              </div>
+                              <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                                <div className="text-[10px] text-zinc-500">
+                                  最佳实践
+                                </div>
+                                <div className="text-sm font-semibold text-zinc-200 tabular-nums">
+                                  {mcpLhScores.bestPractices ?? "-"}
+                                </div>
+                              </div>
+                              <div className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                                <div className="text-[10px] text-zinc-500">
+                                  SEO
+                                </div>
+                                <div className="text-sm font-semibold text-zinc-200 tabular-nums">
+                                  {mcpLhScores.seo ?? "-"}
+                                </div>
+                              </div>
+                            </div>
+                            {mcpLhScores.suggestions &&
+                            mcpLhScores.suggestions.length > 0 ? (
+                              <div className="mt-2 space-y-1">
+                                {mcpLhScores.suggestions
+                                  .slice(0, 5)
+                                  .map((s, i) => (
+                                    <div
+                                      key={`${s.id}-${i}`}
+                                      className="text-[11px] text-zinc-400"
+                                    >
+                                      • {s.title}
+                                    </div>
+                                  ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
+                </div>
+              ) : null}
+
+              {rightTab === "agents" ? (
+                <div className="space-y-4">
+                  {results.length === 0 ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-8 text-center text-sm text-zinc-500">
+                      暂无 Agent 结果。请先开始审查。
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs font-medium text-zinc-400">
+                          审查细节（可追溯）
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                          onClick={() => setShowAgentDetails((v) => !v)}
+                        >
+                          {showAgentDetails ? "收起" : "展开"}
+                        </button>
+                      </div>
+
+                      {showAgentDetails ? (
+                        <div className="mt-3 space-y-4">
+                          {results.map((r) => (
+                            <div
+                              key={r.role}
+                              className="rounded-lg border border-zinc-800 bg-zinc-950/20 p-3"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-zinc-200">
+                                    {r.role === AgentRole.LINTER
+                                      ? "Linter（规范/类型）"
+                                      : r.role === AgentRole.ARCHITECT
+                                        ? "Architect（架构/性能）"
+                                        : "Refactorer（最终整合）"}
+                                  </div>
+                                  {r.thinking ? (
+                                    <div className="mt-1 text-[11px] text-zinc-500 line-clamp-2">
+                                      {r.thinking}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {r.suggestedCode ? (
+                                    <button
+                                      type="button"
+                                      className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-700"
+                                      onClick={() =>
+                                        applyToEditor(
+                                          r.suggestedCode || "",
+                                          r.role === AgentRole.LINTER
+                                            ? "LINTER"
+                                            : r.role === AgentRole.ARCHITECT
+                                              ? "ARCHITECT"
+                                              : "FINAL",
+                                        )
+                                      }
+                                    >
+                                      应用
+                                    </button>
+                                  ) : null}
+                                  <div className="text-[10px] text-zinc-500 uppercase">
+                                    {r.role}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                {(Array.isArray(r.comments)
+                                  ? r.comments
+                                  : []
+                                ).map((comment, cIdx) => (
+                                  <div
+                                    key={cIdx}
+                                    className="rounded border border-zinc-800 bg-zinc-950/30 p-2"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <AlertCircle
+                                        className={[
+                                          "mt-0.5 h-4 w-4 shrink-0",
+                                          comment.severity === "error"
+                                            ? "text-red-400"
+                                            : comment.severity === "warn"
+                                              ? "text-amber-400"
+                                              : "text-blue-400",
+                                        ].join(" ")}
+                                      />
+                                      <div className="min-w-0">
+                                        <div className="text-xs text-zinc-200">
+                                          {comment.message}
+                                          {typeof comment.line === "number" ? (
+                                            <span className="ml-2 text-[10px] text-zinc-500 tabular-nums">
+                                              L{comment.line}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        {comment.suggestion ? (
+                                          <div className="mt-1 font-mono text-[11px] text-zinc-300">
+                                            {comment.suggestion}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </section>
         </div>
       </main>
 

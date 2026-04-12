@@ -71,7 +71,8 @@ export class CodeReviewOrchestrator {
 
     const refTask: AgentTask = {
       ...task,
-      context: [task.context, '【审查线索汇总】', mergedHints].filter(Boolean).join('\n\n'),
+      context: ['【审查线索汇总】', mergedHints].filter(Boolean).join('\n\n'),
+      instruction: task.instruction // 显式传递指挥指令
     };
     const refRes = await this.refactorer.run(refTask, (piece) => {
       onAgentToken?.(AgentRole.REFACTORER, piece);

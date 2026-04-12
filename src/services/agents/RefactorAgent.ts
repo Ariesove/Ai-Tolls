@@ -2,9 +2,13 @@ import { BaseAgent } from "./BaseAgent";
 import { AgentRole, AgentTask } from "./types";
 
 const buildReviewHints = (task: AgentTask) => {
+  const instr = task.instruction?.trim();
+  const instructionBlock = instr
+    ? `\n【指挥指令 - 最高优先级】\n${instr}\n`
+    : "";
   const ctx = task.context?.trim();
-  const ctxBlock = ctx ? `\n\n【可参考上下文（来自知识库/RAG）】\n${ctx}` : "";
-  return `你将收到一段代码与一些审查线索。你的目标是：在不改变业务行为的前提下，综合这些线索给出一份“可直接应用”的最终代码。\n${ctxBlock}`;
+  const ctxBlock = ctx ? `\n\n【可参考上下文/审查线索汇总】\n${ctx}` : "";
+  return `你将收到一段代码与一些审查线索。你的目标是：在满足指挥指令的前提下，综合这些线索给出一份“可直接应用”的最终代码。\n${instructionBlock}${ctxBlock}`;
 };
 
 export class RefactorAgent extends BaseAgent {
