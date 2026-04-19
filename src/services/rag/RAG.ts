@@ -356,15 +356,11 @@ Question: {question}`);
     for await (const chunk of stream) {
       if (chunk?.content) {
         fullContent += chunk.content;
-        flushBuffer(fullContent)
         console.log('chunk.content', chunk.content)
-        // requestAnimationFrame((() => flushBuffer(chunk.content)))
-        // if (rafId === null) {
-        //   rafId = setTimeout(() => flushBuffer(fullContent), 500);
-        // }
-        // if (rafId === null) {
-        //   rafId = requestAnimationFrame((() => flushBuffer(chunk.content)))
-        // }
+
+        if (rafId === null) {
+          rafId = requestAnimationFrame((() => flushBuffer(fullContent)))
+        }
 
         // setTimeout(() => onChunk(chunk.content), 10000); // ≈60 FPS
       }

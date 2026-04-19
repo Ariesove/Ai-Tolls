@@ -1,111 +1,117 @@
-# AI-Tolls（本地 RAG + 流式渲染聊天应用）
+# （多 Agent 代码审查与重构工作台）AI 驱动开发
 
-一个基于 Next.js 的本地 RAG 应用，聚焦“降低大模型幻觉、提升交互体验”。项目实现了安全可控的流式 Markdown 渲染、Prism 实时高亮、Mermaid 图表、KaTeX 公式，以及代码复制能力，并保持严格的安全策略（rehype-sanitize、CSP）。
+一个面向前端工程师的 AI Code Review 工作台：把“RAG 检索证据 + 多 Agent 并行审查 + 最终可应用重构 + Diff 校验”串成一条可视化、可追溯、可流式反馈的流水线。
 
-## 技术栈
+## 图例展示
+
+1. 总览 多agent 执行流可视化
+2. 最终修改建议,综合规范,架构性能agent 并支持多次迭代
+3. 具体每个agent发现问题细节可追溯
+4. 支持代码diff详情,确保准确度
+   ![alt text](image-2.png)
+   ![alt text](image-3.png)
+   ![alt text](image-4.png)
+   ![alt text](image-5.png)
+   ![alt text](image-6.png)
+
+## 架构图（图示）
+
+```mermaid
+flowchart TB
+  UI["UI /code-review<br/>page.tsx"] -->|"code + instruction"| RAG["reviewContext.ts<br/>构建 RAG 上下文"]
+  UI -->|"AgentTask"| ORCH["Orchestrator.ts<br/>任务编排"]
+
+  subgraph PAR["并行审查"]
+    L["LinterAgent<br/>规范/类型/Hooks"]
+    A["ArchitectAgent<br/>架构/性能"]
+  end
+
+  ORCH --> L
+  ORCH --> A
+  L -->|"AgentResult(JSON)"| ORCH
+  A -->|"AgentResult(JSON)"| ORCH
+
+  ORCH -->|"mergedHints + instruction"| R["RefactorAgent<br/>最终整合"]
+  R -->|"suggestedCode(流式) + result"| UI
+
+  ORCH --> OV["Overview(总览)<br/>draftAggregated/aggregated"]
+  OV --> UI
+
+  UI --> AGG["aggregate.ts<br/>聚合/去重/评分/下一步指令"]
+  AGG --> UI
+
+  UI -->|"Diff"| DIFF["react-diff-viewer"]
+```
+
+### RAG检索
+
+通过 LLM 向量化, 策略为通过 文档段落做分割避免语义散乱
+
+## 核心能力
+
+- 多 Agent 并行审查：Linter（规范/类型/Hooks）+ Architect（架构/性能）
+- 配置 rules ,skills 保障整体代码可靠性
+- 指挥指令：用户给目标与约束，作为最高优先级输入参与下一轮整合
+- 总览（指挥视角）：Top 问题、维度评分、推荐步骤、下一步指令（可增量更新）
+- 最终建议代码：Refactorer 生成“可直接应用”的完整代码，支持流式预览
+- Diff 落地：对比改动并一键应用回编辑器
+- 证据链：RAG 命中片段作为可追溯依据（减少“凭空建议”）
+
+## 技术选型
 
 - Next.js 14 + React 18 + TypeScript
-- React Markdown 生态：remark-gfm、remark-math、rehype-katex、rehype-sanitize
-- 语法高亮：react-syntax-highlighter（Prism Light 按需 + 预加载）
-- 图表：Mermaid（动态引入，securityLevel: strict）
-- 向量检索与 RAG：LangChain + OpenAI（见 RAG 服务）
-- 样式与图标：Tailwind（merge 工具）、lucide-react
+- UI：Tailwind CSS + lucide-react
+- LLM/RAG：LangChain(OpenAI) + 本地知识库检索（用于 reviewContext 注入）
+- 编排：（并行审查 + 最终整合）
+- 流式：Refactorer JSON 流式输出 + 前端从未完 JSON 中提取 suggestedCode 片段
+
+## 架构设计
+
+目标：把不确定的 LLM 过程变成可控的数据流与可复盘的产物。
+
+- 分层
+  - Components：工作台 UI（工作流、总览、最终建议、Diff）
+  - Services：Agent 编排、RAG 检索、聚合器（把多结果变成可行动总览）
+  - Utils：Result<T,E>、解析/校验/工具函数
+- Agent 协作
+  - 并行审查：Linter + Architect 并行启动，降低等待
+  - 最终整合：Refactorer 在“指挥指令 + 审查线索”下输出最终代码
+- 结果协议（JSON）
+  - 每个 Agent 输出结构化 JSON（comments / thinking / suggestedCode）
+  - Refactorer 强制优先输出 suggestedCode，便于前端流式展示“最终代码草稿”
+
+## 关键数据流（从点击到可用）
+
+1. 输入代码 + 指挥指令 → 构建 RAG 上下文（命中片段）
+2. Orchestrator 并行调用 Linter/Architect → 收到结果后聚合总览并更新 UI
+3. 汇总线索后调用 Refactorer → 流式输出 suggestedCode → 完成后产出 finalCode
+4. 用户打开 Diff / 一键应用 / 保存快照复盘
+
+流式与状态（你现在的设计点）：
+
+- 状态流：UI 通过 `agentStatus` 记录各 Agent 的 thinking/done/error，用于工作流可视化
+- 总览流：每个 Agent 结果返回时触发一次聚合，先生成 `draftAggregated`，最终完成后生成 `aggregated`
+- 代码流：仅对 Refactorer 做 token 流式处理，从未完 JSON 中提取 suggestedCode 片段用于预览
 
 ## 目录结构（节选）
 
 ```bash
 src/
 ├─ app/
-│  ├─ layout.tsx          # 全局样式（含 KaTeX CSS）
-│  └─ page.tsx            # 入口页面
-├─ components/
-│  └─ features/
-│     ├─ ChatWindow.tsx   # 流式缓冲、增量更新、消息列表控制
-│     └─ MessageItem.tsx  # Markdown 渲染、Prism 高亮、Mermaid、复制
+│  ├─ code-review/page.tsx        # 工作台 UI（总览/最终建议/证据/Agents）
+│  ├─ api/mcp/screenshot/route.ts # MCP：截图（服务端代理）
+│  └─ api/mcp/lighthouse/route.ts # MCP：Lighthouse（服务端代理）
+├─ components/features/
+│  ├─ WorkflowStrip.tsx           # 工作流状态条（串行 + 并行）
+│  ├─ SummaryCard.tsx             # 总览卡（指挥指令、评分、Top 问题）
+│  └─ ReviewHistoryPanel.tsx      # 历史快照（复盘/对比）
 ├─ services/
-│  └─ rag/
-│     └─ RAG.ts           # RAG 相关逻辑（嵌入、知识检索、工具调用等）
-└─ types/
-   └─ react-syntax-highlighter.d.ts # ESM 按需模块的类型垫片
+│  ├─ agents/                     # 多 Agent + 编排器
+│  ├─ review/aggregate.ts         # 聚合器（去重、排序、评分、下一步指令）
+│  └─ rag/reviewContext.ts        # 面向 code-review 的检索上下文构建
 ```
 
-关键文件参考：
-
-- [MessageItem.tsx](file:///e:/AI项目实践/Ai-Tolls/src/components/features/MessageItem.tsx)
-- [ChatWindow.tsx](file:///e:/AI项目实践/Ai-Tolls/src/components/features/ChatWindow.tsx)
-- [RAG.ts](file:///e:/AI项目实践/Ai-Tolls/src/services/rag/RAG.ts)
-- [next.config.js](file:///e:/AI项目实践/Ai-Tolls/next.config.js)
-- [tsconfig.json](file:///e:/AI项目实践/Ai-Tolls/tsconfig.json)
-
-## 核心功能
-- Rag 流程
- - 内容解析,向量化
- - LLM 请求先先进行内容,向量化,进行相似度检索
- - 整合检索内容,和问答内容输出
-
-- 流式 Markdown 渲染
-  - 在流式输出过程中持续解析 Markdown，文本/列表/段落即时呈现。
-  - 对未闭合的代码围栏进行“渲染期补齐”，让代码块在生成中也能被解析为块级，减少错位。
-
-- 代码语法高亮（Prism）
-  - 采用 PrismLight 以减小包体，语言模块按需加载。
-  - 为解决“首帧未高亮”与“闪动”，预加载常用语言（typescript、javascript、json、markdown、bash、python、markup），并共享注册缓存，保证首次出现即高亮。
-  - 在动态语言未就绪时以“markup”先行着色，语言就绪后平滑切换，组件不重建，减少闪动。
-
-- 复制能力
-  - 优先使用 Clipboard API；不支持时回退 document.execCommand('copy')。
-  - 复制按钮置于 pre 容器层，避免 code 标签内布局抖动。
-
-- 数学公式与图表
-  - remark-math + rehype-katex 渲染 LaTeX；在 layout.tsx 引入 KaTeX CSS。
-  - Mermaid 采用动态 import，securityLevel 设为 strict，防止 XSS。
-
-- 安全与合规
-  - rehype-sanitize 基于 defaultSchema 扩展 KaTeX 必要 class 白名单。
-  - CSP 由 Next headers 注入，限制 script/style/img/connect/font 等源，阻断潜在注入。
-
-## 关键设计与难点
-
-- 流式阶段的“实时高亮”与“闪动”治理
-  - 难点：语言模块是异步按需加载；若在首次渲染时未就绪，会出现“纯文本→高亮”的闪变。
-  - 方案：组件挂载预热 PrismLight+主题；常用语言启动即预加载并注册到共享缓存；代码块初次渲染即使用高亮组件（先以 markup），待目标语言就绪后仅切换 language，避免组件重建。
-
-- 安全渲染
-  - Markdown 渲染严格不启用 rehypeRaw；Mermaid 在安全模式（strict）下渲染；链接与图片做协议过滤/白名单校验；配合 CSP 头进一步收敛风险面。
-
-- 流式性能与体验
-  - ChatWindow 实现缓冲与节流（例如 50–100ms 间隔或 ≥N 字符批量），减少大规模重绘与解析；对围栏做渲染期补齐，避免“半个代码块”导致的破损布局。
-
-
-
-## 开发与运行
-
-- 安装依赖
-  - Node 18+
-  - npm i
-
-- 本地运行
-  - npm run dev
-  - 打开 http://localhost:3000
-
-- 代码规范
-  - TypeScript 严格模式；Next + React 18；ESLint 核心 Web Vitals。
-
-## 常见问题
-
-- 首帧未高亮/抖动
-  - 已通过预热 PrismLight 与常用语言尽量消除；非常用语言首次出现仍需按需加载，短暂切换不可避免。可将常用语言列表扩展至你场景常见的语言。
-
-- TS 提示找不到语言模块
-  - 已在 src/types/react-syntax-highlighter.d.ts 增加 ESM 模块声明；如新增语言模块，请同步更新声明或使用现有模块别名（tsx→typescript、jsx→javascript）。
-
-## 后续规划
-
-- RAG 侧：引入本地向量库持久化（SQLite/PG + pgvector），支持多文档管理与检索评估；补充工具调用链路的可观测性。
-- 高亮侧：按需扩展预加载语言；评估 Shiki/StarryNight 等替代方案（服务端预高亮）。
-- 渲染侧：将围栏/段落解析下沉到 Web Worker，进一步平滑 UI。
-- 安全侧：结合自定义 URL 校验与 CSP 报警，形成全链路防护。
-
----
-
-项目演示与说明将持续更新。欢迎提出建议与问题。
+入口页面：
+- / 对话平台
+- /code-review：代码审查工作台
+- /ingest：知识库导入（可选）
