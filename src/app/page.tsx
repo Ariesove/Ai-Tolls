@@ -3,11 +3,11 @@
 import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { createConversation } from "@/store/chatSlice";
-import { ConversationSidebar } from "@/components/features/ConversationSidebar";
-import { ChatWindow } from "@/components/features/ChatWindow";
-import { ModelSelector } from "@/components/features/ModelSelector";
-import { KnowledgeBaseDialog } from "@/components/features/KnowledgeBaseDialog";
-import { SettingsDialog } from "@/components/features/SettingsDialog";
+import { ConversationSidebar } from "@/components/features/Common/ConversationSidebar";
+import { ChatWindow } from "@/components/features/ChartComponent/ChatWindow";
+import { ModelSelector } from "@/components/features/ChartComponent/ModelSelector";
+import { KnowledgeBaseDialog } from "@/components/features/Common/KnowledgeBaseDialog";
+import { SettingsDialog } from "@/components/features/Common/SettingsDialog";
 import { Button } from "@/components/ui/Button";
 import { BookOpen, Settings } from "lucide-react";
 
@@ -16,6 +16,7 @@ export default function Home() {
   const { conversations } = useAppSelector((state) => state.chat);
   const [isKbOpen, setIsKbOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
   // Initialize a conversation if none exists
   useEffect(() => {
@@ -28,7 +29,6 @@ export default function Home() {
     <main className="flex h-screen w-full overflow-hidden bg-zinc-950 text-zinc-100">
       {/* Sidebar */}
       <ConversationSidebar />
-
       {/* Main Chat Area */}
       <div className="flex h-full flex-1 flex-col relative">
         <header className="flex h-14 items-center justify-between border-b border-zinc-800 bg-zinc-950/50 px-6 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/50 z-10">

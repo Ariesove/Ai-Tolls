@@ -8,11 +8,11 @@
 2. 最终修改建议,综合规范,架构性能agent 并支持多次迭代
 3. 具体每个agent发现问题细节可追溯
 4. 支持代码diff详情,确保准确度
-   ![alt text](image-2.png)
-   ![alt text](image-3.png)
-   ![alt text](image-4.png)
-   ![alt text](image-5.png)
-   ![alt text](image-6.png)
+   ![alt text](public/image-2.png)
+   ![alt text](public/image-3.png)
+   ![alt text](public/image-4.png)
+   ![alt text](public/image-5.png)
+   ![alt text](public/image-6.png)
 
 ## 架构图（图示）
 
@@ -99,8 +99,6 @@ flowchart TB
 src/
 ├─ app/
 │  ├─ code-review/page.tsx        # 工作台 UI（总览/最终建议/证据/Agents）
-│  ├─ api/mcp/screenshot/route.ts # MCP：截图（服务端代理）
-│  └─ api/mcp/lighthouse/route.ts # MCP：Lighthouse（服务端代理）
 ├─ components/features/
 │  ├─ WorkflowStrip.tsx           # 工作流状态条（串行 + 并行）
 │  ├─ SummaryCard.tsx             # 总览卡（指挥指令、评分、Top 问题）
@@ -112,6 +110,7 @@ src/
 ```
 
 入口页面：
+
 - / 对话平台
 - /code-review：代码审查工作台
 - /ingest：知识库导入（可选）

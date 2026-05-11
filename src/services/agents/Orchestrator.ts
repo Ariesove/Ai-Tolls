@@ -30,7 +30,7 @@ export class CodeReviewOrchestrator {
     onAgentResult?: (role: AgentRole, result: { role: AgentRole; comments: any[]; thinking?: string; suggestedCode?: string }) => void,
   ): Promise<OrchestratorResult> {
 
-    // 1. 并行分发任务（中大厂追求效率的典型体现）
+    // 1. 并行分发任务
     const promises = this.agents.map(async (agent) => {
       onAgentProgress?.(agent.role, 'thinking');
       const result = await agent.run(task, (piece) => {

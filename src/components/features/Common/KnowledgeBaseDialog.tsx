@@ -36,7 +36,7 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
     { doc: StoredDocument; score?: number }[]
   >([]);
   const [isSearching, setIsSearching] = useState(false);
-
+  console.log("3333333333", 3333333333);
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
     const data = await file.arrayBuffer();
     const mod = (await import("pdfjs-dist/legacy/build/pdf")) as unknown;
@@ -83,6 +83,7 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
       }
       out += buf.join(" ") + "\n";
     }
+    console.log("out", out);
     return out;
   }, []);
 
@@ -116,6 +117,7 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
         return;
       }
       const textContent = await f.text();
+      console.log("textContent", textContent);
       setText(textContent);
     },
     [extractPdfText],
@@ -152,12 +154,6 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
     setError("");
 
     try {
-      const apiKey = localStorage.getItem("OPENAI_API_KEY") || "";
-      if (!apiKey) {
-        setError("请先在 Settings 中配置 API Key。");
-        return;
-      }
-
       await addText(value, {
         source: fileName ? "file-upload" : "user-paste",
         filename: fileName || undefined,
