@@ -3,43 +3,30 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import { AgentRole } from "@/services/agents/types";
+import { useCodeReviewContext } from "./context/CodeReviewContext";
 
 const ReactDiffViewer = dynamic(() => import("react-diff-viewer-continued"), {
   ssr: false,
 });
 
-interface DiffModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  reviewedCode: string;
-  diffTargetCode: string;
-  diffTargetRole: AgentRole | "FINAL";
-  setDiffTargetRole: (role: AgentRole | "FINAL") => void;
-  diffShowOnly: boolean;
-  setDiffShowOnly: (v: boolean | ((prev: boolean) => boolean)) => void;
-  diffSplit: boolean;
-  setDiffSplit: (v: boolean | ((prev: boolean) => boolean)) => void;
-  diffWrap: boolean;
-  setDiffWrap: (v: boolean | ((prev: boolean) => boolean)) => void;
-  onApply: (code: string, from: "FINAL" | "DIFF") => void;
-}
+export const DiffModal: React.FC = () => {
+  const { ui, core } = useCodeReviewContext();
+  const {
+    isDiffOpen,
+    setIsDiffOpen,
+    diffTargetRole,
+    setDiffTargetRole,
+    diffShowOnly,
+    setDiffShowOnly,
+    diffSplit,
+    setDiffSplit,
+    diffWrap,
+    setDiffWrap,
+  } = ui;
 
-export const DiffModal: React.FC<DiffModalProps> = ({
-  isOpen,
-  onClose,
-  reviewedCode,
-  diffTargetCode,
-  diffTargetRole,
-  setDiffTargetRole,
-  diffShowOnly,
-  setDiffShowOnly,
-  diffSplit,
-  setDiffSplit,
-  diffWrap,
-  setDiffWrap,
-  onApply,
-}) => {
-  if (!isOpen) return null;
+  const { reviewedCode, diffTargetCode, applyToEditor } = core;
+
+  if (!isDiffOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
@@ -52,7 +39,8 @@ export const DiffModal: React.FC<DiffModalProps> = ({
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === "FINAL") setDiffTargetRole("FINAL");
-                else if (v === AgentRole.LINTER) setDiffTargetRole(AgentRole.LINTER);
+                else if (v === AgentRole.LINTER)
+                  setDiffTargetRole(AgentRole.LINTER);
                 else setDiffTargetRole(AgentRole.ARCHITECT);
               }}
               className="h-8 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-200"
@@ -86,8 +74,11 @@ export const DiffModal: React.FC<DiffModalProps> = ({
               type="button"
               className="h-8 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-200 hover:border-zinc-700"
               onClick={() => {
-                onApply(diffTargetCode, diffTargetRole === "FINAL" ? "FINAL" : "DIFF");
-                onClose();
+                applyToEditor(
+                  diffTargetCode,
+                  diffTargetRole === "FINAL" ? "FINAL" : "DIFF",
+                );
+                setIsDiffOpen(false);
               }}
               disabled={!diffTargetCode}
             >
@@ -96,7 +87,7 @@ export const DiffModal: React.FC<DiffModalProps> = ({
             <button
               type="button"
               className="h-8 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-200 hover:border-zinc-700"
-              onClick={onClose}
+              onClick={() => setIsDiffOpen(false)}
             >
               关闭
             </button>

@@ -2,21 +2,14 @@
 
 import React from "react";
 import { AlertCircle } from "lucide-react";
-import { AgentRole, AgentResult } from "@/services/agents/types";
+import { AgentRole } from "@/services/agents/types";
+import { useCodeReviewContext } from "./context/CodeReviewContext";
 
-interface AgentsTabProps {
-  results: AgentResult[];
-  showAgentDetails: boolean;
-  setShowAgentDetails: (v: boolean | ((prev: boolean) => boolean)) => void;
-  applyToEditor: (code: string, from: any) => void;
-}
+export const AgentsTab: React.FC = () => {
+  const { core, ui } = useCodeReviewContext();
+  const { results, applyToEditor } = core;
+  const { showAgentDetails, setShowAgentDetails } = ui;
 
-export const AgentsTab: React.FC<AgentsTabProps> = ({
-  results,
-  showAgentDetails,
-  setShowAgentDetails,
-  applyToEditor,
-}) => {
   return (
     <div className="space-y-4">
       {results.length === 0 ? (

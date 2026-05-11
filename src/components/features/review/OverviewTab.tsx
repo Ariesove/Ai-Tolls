@@ -2,44 +2,29 @@
 
 import React from "react";
 import { Sparkles, Loader2 } from "lucide-react";
-import { WorkflowStrip } from "@/components/features/code-review/WorkflowStrip";
+import { WorkflowStrip } from "@/components/features/code-review/workFlowAgent/WorkflowStrip";
 import { ReviewHistoryPanel } from "@/components/features/code-review/ReviewHistoryPanel";
 import { SummaryCard } from "@/components/features/code-review/SummaryCard";
 import { ScoreCard } from "@/components/features/code-review/ScoreCard";
-import { AggregatedReview } from "@/services/review/aggregate";
-import { AgentResult } from "@/services/agents/types";
+import { useCodeReviewContext } from "./context/CodeReviewContext";
 
-interface OverviewTabProps {
-  steps: any;
-  history: any[];
-  restoreSnapshot: (id: string) => void;
-  openSnapshotDiff: (id: string) => void;
-  clearHistory: () => void;
-  aggregated: AggregatedReview | null;
-  draftAggregated: AggregatedReview | null;
-  commandText: string;
-  setCommandText: (text: string) => void;
-  ragEvidence: any[];
-  results: AgentResult[];
-  isReviewing: boolean;
-  scores: any[];
-}
+export const OverviewTab: React.FC = () => {
+  const { core, history: historyCtx, actions } = useCodeReviewContext();
+  const {
+    steps,
+    aggregated,
+    draftAggregated,
+    commandText,
+    setCommandText,
+    ragEvidence,
+    results,
+    isReviewing,
+    scores,
+  } = core;
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({
-  steps,
-  history,
-  restoreSnapshot,
-  openSnapshotDiff,
-  clearHistory,
-  aggregated,
-  draftAggregated,
-  commandText,
-  setCommandText,
-  ragEvidence,
-  results,
-  isReviewing,
-  scores,
-}) => {
+  const { history, clearHistory } = historyCtx;
+  const { restoreSnapshot, openSnapshotDiff } = actions;
+
   return (
     <div className="space-y-6">
       <WorkflowStrip model={steps} />

@@ -3,30 +3,25 @@
 import React from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
+import { useCodeReviewContext } from "./context/CodeReviewContext";
 
-interface FinalTabProps {
-  finalCode: string;
-  isReviewing: boolean;
-  draftFinalCode: string;
-  applyToEditor: (code: string, from: any) => void;
-  setIsDiffOpen: (open: boolean) => void;
-}
+export const FinalTab: React.FC = () => {
+  const { core, ui } = useCodeReviewContext();
+  const { finalCode, isReviewing, draftFinalCode, applyToEditor } = core;
+  const { setIsDiffOpen } = ui;
 
-export const FinalTab: React.FC<FinalTabProps> = ({
-  finalCode,
-  isReviewing,
-  draftFinalCode,
-  applyToEditor,
-  setIsDiffOpen,
-}) => {
   return (
     <div className="space-y-6">
       {!finalCode && isReviewing && draftFinalCode && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-xs font-medium text-zinc-400">最终建议（流式生成中）</div>
-              <div className="mt-1 text-[10px] text-zinc-500">代码正在生成，完成后可直接 Diff / 应用</div>
+              <div className="text-xs font-medium text-zinc-400">
+                最终建议（流式生成中）
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-500">
+                代码正在生成，完成后可直接 Diff / 应用
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/30 px-2 py-1 text-[10px] text-zinc-500">
@@ -56,8 +51,12 @@ export const FinalTab: React.FC<FinalTabProps> = ({
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-xs font-medium text-zinc-400">最终建议（推荐）</div>
-              <div className="mt-1 text-[10px] text-zinc-500">已整合并行审查结论，默认只看这一份 Diff</div>
+              <div className="text-xs font-medium text-zinc-400">
+                最终建议（推荐）
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-500">
+                已整合并行审查结论，默认只看这一份 Diff
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button

@@ -11,7 +11,7 @@ import {
   AggregatedReview,
   aggregateAgentResults,
 } from "@/services/review/aggregate";
-import { StepStatus } from "@/components/features/code-review/WorkflowStrip";
+import { StepStatus } from "@/components/features/code-review/workFlowAgent/WorkflowStrip";
 
 export type AppliedFrom = "LINTER" | "ARCHITECT" | "FINAL" | "DIFF";
 
@@ -217,6 +217,132 @@ export function useReviewCore() {
     }, 0);
   }, [lastApplied]);
 
+  const handleReview = async (onSaveHistory?: (snap: any) => void) => {
+    if (!code.trim()) return;
+
+    const originalCode = code;
+    setReviewedCode(originalCode);
+    setIsReviewing(true);
+    setResults([]);
+    setAgentStatus({});
+    setHasDiff(false);
+    setRagStatus("running");
+    setRagMeta(null);
+    setLastApplied(null);
+    setAggregated(null);
+    setDraftAggregated(null);
+    setFinalCode("");
+    setRagEvidence([]);
+    setDraftFinalCode("");
+    streamBufRef.current = {};
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    const orchestrator = new CodeReviewOrchestrator();
+    const fileName = "component.tsx";
+    const language = "typescript";
+
+    try {
+      const instruction = commandText.trim();
+      const ctxRes = await buildReviewContext({
+        code: originalCode,
+        fileName,
+        language,
+        k: 4,
+        instruction,
+      });
+      setRagStatus(isOk(ctxRes) ? "done" : "error");
+      const ctxText = isOk(ctxRes) ? ctxRes.data : "";
+      const hits = ctxText ? ctxText.split("\n---\n").length : 0;
+      setRagMeta({ hits, chars: ctxText.length });
+      if (ctxText) {
+        setRagEvidence(parseRagEvidence(ctxText));
+      }
+
+      const task: AgentTask = {
+        id: uuidv4(),
+        code: originalCode,
+        language,
+        fileName,
+        context: ctxText,
+        instruction: instruction,
+      };
+
+      const reviewResult = await orchestrator.runReview(
+        task,
+        (role, status) => {
+          setAgentStatus((prev) => ({ ...prev, [role]: status }));
+        },
+        (role, chunk) => {
+          if (role !== AgentRole.REFACTORER) return;
+          const cur2 = streamBufRef.current[role] || "";
+          streamBufRef.current[role] = (cur2 + chunk).slice(-12000);
+          const draft = extractSuggestedCodeSoFar(streamBufRef.current[role]);
+          setDraftFinalCode(draft.slice(-20000));
+        },
+        (role, partialResult) => {
+          setResults((prev) => {
+            const next = prev.filter((r) => r.role !== role);
+            next.push(partialResult as AgentResult);
+            next.sort((a, b) => String(a.role).localeCompare(String(b.role)));
+            const aggRes = aggregateAgentResults(next);
+            if (isOk(aggRes)) {
+              setDraftAggregated(aggRes.data);
+              setCommandText((cur) =>
+                cur.trim() ? cur : aggRes.data.nextCommand,
+              );
+            }
+            return next;
+          });
+        },
+      );
+      setResults(reviewResult.results);
+      setFinalCode(reviewResult.finalSuggestion || "");
+
+      const aggRes = aggregateAgentResults(reviewResult.results);
+      if (isOk(aggRes)) {
+        setAggregated(aggRes.data);
+        setDraftAggregated(null);
+        setCommandText((prev) =>
+          prev.trim() ? prev : aggRes.data.nextCommand,
+        );
+
+        if (onSaveHistory) {
+          const dims = aggRes.data.dimensions ?? [];
+          const overallScore =
+            dims.length > 0
+              ? Math.round(dims.reduce((a, d) => a + d.score, 0) / dims.length)
+              : 0;
+
+          onSaveHistory({
+            code: originalCode,
+            commandText: instruction,
+            finalCode: reviewResult.finalSuggestion || "",
+            aggregated: aggRes.data as unknown,
+            overallScore,
+            mustFixCount: aggRes.data.mustFix?.length ?? 0,
+            ragMeta: { hits, chars: ctxText.length },
+          });
+        }
+      } else {
+        setAggregated(null);
+      }
+      setHasDiff(
+        reviewResult.results.some(
+          (r) =>
+            typeof r.suggestedCode === "string" && r.suggestedCode.length > 0,
+        ),
+      );
+    } catch (error) {
+      console.error("审查失败:", error);
+      setRagStatus("error");
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
   return {
     code,
     setCode,
@@ -259,6 +385,7 @@ export function useReviewCore() {
     scores,
     applyToEditor,
     undoApply,
+    handleReview,
   };
 }
 

@@ -1,29 +1,24 @@
 "use client";
 
 import React from "react";
+import { useCodeReviewContext } from "./context/CodeReviewContext";
 
-interface EvidenceTabProps {
-  ragStatus: string;
-  ragMeta: any;
-  kbCount: number;
-  ragEvidence: any[];
-  setIsKbOpen: (open: boolean) => void;
-}
+export const EvidenceTab: React.FC = () => {
+  const { core, ui } = useCodeReviewContext();
+  const { ragStatus, ragMeta, kbCount, ragEvidence } = core;
+  const { setIsKbOpen } = ui;
 
-export const EvidenceTab: React.FC<EvidenceTabProps> = ({
-  ragStatus,
-  ragMeta,
-  kbCount,
-  ragEvidence,
-  setIsKbOpen,
-}) => {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-xs font-medium text-zinc-400">RAG 证据面板</div>
-            <div className="mt-1 text-[10px] text-zinc-500">将“检索命中片段”作为可追溯依据输入到多 Agent</div>
+            <div className="text-xs font-medium text-zinc-400">
+              RAG 证据面板
+            </div>
+            <div className="mt-1 text-[10px] text-zinc-500">
+              将“检索命中片段”作为可追溯依据输入到多 Agent
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -61,7 +56,10 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({
             {ragEvidence.length > 0 ? (
               <div className="mt-3 space-y-2">
                 {ragEvidence.map((e, idx) => (
-                  <div key={idx} className="rounded border border-zinc-800 bg-zinc-950/20 p-2">
+                  <div
+                    key={idx}
+                    className="rounded border border-zinc-800 bg-zinc-950/20 p-2"
+                  >
                     <div className="text-[10px] text-zinc-300">{e.title}</div>
                     <div className="mt-1 text-[10px] text-zinc-500 line-clamp-3">
                       {e.preview}
@@ -70,7 +68,9 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="mt-3 text-[11px] text-zinc-600">暂无命中片段（或尚未运行审查）。</div>
+              <div className="mt-3 text-[11px] text-zinc-600">
+                暂无命中片段（或尚未运行审查）。
+              </div>
             )}
           </div>
         </div>
