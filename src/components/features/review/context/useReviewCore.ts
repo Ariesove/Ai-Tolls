@@ -2,9 +2,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { CodeReviewOrchestrator } from "@/services/agents/Orchestrator";
-import { AgentTask, AgentRole, AgentResult } from "@/services/agents/types";
-import { buildReviewContext } from "@/services/rag/reviewContext";
+import { CodeReviewOrchestrator } from "@/services/Agents2/Orchestrator";
+import { AgentTask, AgentRole, AgentResult } from "@/services/Agents2/types";
 import { isOk } from "@/lib/result";
 import { listDocs } from "@/services/rag/RAG";
 import {
@@ -240,37 +239,24 @@ export function useReviewCore() {
       rafRef.current = null;
     }
 
-    const orchestrator = new CodeReviewOrchestrator();
     const fileName = "component.tsx";
     const language = "typescript";
 
     try {
       const instruction = commandText.trim();
-      const ctxRes = await buildReviewContext({
-        code: originalCode,
-        fileName,
-        language,
-        k: 4,
-        instruction,
-      });
-      setRagStatus(isOk(ctxRes) ? "done" : "error");
-      const ctxText = isOk(ctxRes) ? ctxRes.data : "";
-      const hits = ctxText ? ctxText.split("\n---\n").length : 0;
-      setRagMeta({ hits, chars: ctxText.length });
-      if (ctxText) {
-        setRagEvidence(parseRagEvidence(ctxText));
-      }
+      let ctxText = "";
+      let hits = 0;
 
       const task: AgentTask = {
         id: uuidv4(),
         code: originalCode,
         language,
         fileName,
-        context: ctxText,
+        context: "",
         instruction: instruction,
       };
 
-      const reviewResult = await orchestrator.runReview(
+      const reviewResult = await CodeReviewOrchestrator.runReview(
         task,
         (role, status) => {
           setAgentStatus((prev) => ({ ...prev, [role]: status }));
@@ -296,6 +282,26 @@ export function useReviewCore() {
             }
             return next;
           });
+        },
+        (step, status, payload) => {
+          if (step === "retrieve") {
+            setRagStatus(
+              status === "running"
+                ? "running"
+                : status === "done"
+                  ? "done"
+                  : "error",
+            );
+            if (status === "done") {
+              ctxText = payload?.ctxText ?? "";
+              hits = typeof payload?.hits === "number" ? payload.hits : 0;
+              setRagMeta({
+                hits,
+                chars: typeof payload?.chars === "number" ? payload.chars : 0,
+              });
+              if (ctxText) setRagEvidence(parseRagEvidence(ctxText));
+            }
+          }
         },
       );
       setResults(reviewResult.results);

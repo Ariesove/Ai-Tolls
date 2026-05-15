@@ -1,22 +1,20 @@
-import { BaseAgent } from "./BaseAgent";
-import { AgentRole, AgentTask } from "./types";
+import { AgentRole, AgentTask, IAgent } from "./types";
+import InitLLm, { createAgentRunner, type AgentRuntime } from "./agentUtils";
 
 const buildReviewHints = (task: AgentTask) => {
   const instr = task.instruction?.trim();
-  const instructionBlock = instr
-    ? `\n【指挥指令 - 最高优先级】\n${instr}\n`
-    : "";
+  const instructionBlock = instr ? `\n【指挥指令 - 最高优先级】\n${instr}\n` : "";
   const ctx = task.context?.trim();
   const ctxBlock = ctx ? `\n\n【可参考上下文/审查线索汇总】\n${ctx}` : "";
   return `你将收到一段代码与一些审查线索。你的目标是：在满足指挥指令的前提下，综合这些线索给出一份“可直接应用”的最终代码。\n${instructionBlock}${ctxBlock}`;
 };
 
-export class RefactorAgent extends BaseAgent {
-  readonly role = AgentRole.REFACTORER;
-  readonly name = "Refactorer (最终整合)";
+export const RefactorAgent = (): IAgent => {
+  const role = AgentRole.REFACTORER;
+  const name = "Refactorer (最终整合)";
+  const llm = InitLLm();
 
-  protected getSystemPrompt(): string {
-    return `
+  const getSystemPrompt = () => `
 你是一名资深前端技术负责人，擅长在“规则 + 多人审查意见”下做最终落地改造。
 
 核心约束：
@@ -36,10 +34,8 @@ export class RefactorAgent extends BaseAgent {
   ]
 }
     `;
-  }
 
-  protected getUserPrompt(task: AgentTask): string {
-    return `
+  const getUserPrompt = (task: AgentTask) => `
 ${buildReviewHints(task)}
 
 【目标代码（${task.language}）】
@@ -56,5 +52,20 @@ ${task.code}
 
 要求：输出最终整合后的 suggestedCode（完整可运行），并给出少量汇总 comments。
     `;
-  }
-}
+
+  const runtime: AgentRuntime = {
+    role,
+    name,
+    llm,
+    getSystemPrompt,
+    getUserPrompt,
+  };
+
+  return {
+    role,
+    name,
+    run: createAgentRunner(runtime),
+  };
+};
+
+export default RefactorAgent;

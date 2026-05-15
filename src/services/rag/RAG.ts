@@ -430,7 +430,7 @@ Question: {question}`);
  * Clear all stored vectors
  */
 export const clear = () => {
-  // docs = [];add 
+  docs = [];
 };
 export const listDocs = (): Array<{ filename?: string; chunkIndex?: number; content: string; lineStart?: number; lineEnd?: number }> => {
   return docs.map((d) => ({

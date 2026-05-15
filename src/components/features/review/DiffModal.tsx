@@ -2,7 +2,7 @@
 
 import React from "react";
 import dynamic from "next/dynamic";
-import { AgentRole } from "@/services/agents/types";
+import { AgentRole } from "@/services/Agents2/types";
 import { useCodeReviewContext } from "./context/CodeReviewContext";
 
 const ReactDiffViewer = dynamic(() => import("react-diff-viewer-continued"), {

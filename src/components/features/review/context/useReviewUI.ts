@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AgentRole } from "@/services/agents/types";
+import { AgentRole } from "@/services/Agents2/types";
 
 export type LayoutMode = "split" | "review";
 export type RightTab = "overview" | "final" | "evidence" | "agents";
