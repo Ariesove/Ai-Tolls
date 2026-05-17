@@ -5,6 +5,8 @@ import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { RunnableSequence } from "@langchain/core/runnables";
+import { Err, Ok, type Result } from "@/lib/result";
+import * as kbApi from "@/services/api/kb";
 export interface StoredDocument {
   pageContent: string;
   metadata: Record<string, unknown>;
@@ -306,6 +308,62 @@ export const addText = async (
   });
 };
 
+export const addPrecomputed = (input: {
+  originalText: string;
+  chunks: Array<{ content: string; vector: number[]; chunkIndex: number }>;
+  metadata?: Record<string, unknown>;
+}): Result<true> => {
+  const meta = input.metadata ?? {};
+  const ordered = [...input.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+  const texts = ordered.map((c) => c.content);
+  const ranges = computeChunkLineRanges(input.originalText, texts);
+  for (let i = 0; i < ordered.length; i++) {
+    const c = ordered[i];
+    const r = ranges[i];
+    docs.push({
+      pageContent: c.content,
+      metadata: {
+        ...meta,
+        chunkIndex: c.chunkIndex,
+        lineStart: r?.startLine,
+        lineEnd: r?.endLine,
+      },
+      vector: c.vector,
+    });
+  }
+  return Ok(true as const);
+};
+
+export const hydrateFromDb = async (): Promise<
+  Result<{ documents: number; chunks: number; dim: number }>
+> => {
+  const res = await kbApi.retryExportAll(2);
+  if (!res.success) return Err(res.error);
+
+  clear();
+  for (const doc of res.data.documents) {
+    const chunks = res.data.chunks
+      .filter((c) => c.documentId === doc.id)
+      .map((c) => ({ content: c.content, vector: c.embedding, chunkIndex: c.chunkIndex }));
+    addPrecomputed({
+      originalText: doc.content,
+      chunks,
+      metadata: {
+        filename: doc.filename,
+        source: doc.source,
+        documentId: doc.id,
+      },
+    });
+  }
+
+  const dim = res.data.chunks[0]?.embedding.length ?? 0;
+  return Ok({
+    documents: res.data.documents.length,
+    chunks: res.data.chunks.length,
+    dim,
+  });
+};
+
 
 let llm: ChatOpenAI | null = null;
 const init = () => {
@@ -360,6 +418,7 @@ export const getLLm = async (
     content?: string;
     startLine?: number;
     endLine?: number;
+    hitText?: string;
   }[];
 }> => {
   const llm = init();

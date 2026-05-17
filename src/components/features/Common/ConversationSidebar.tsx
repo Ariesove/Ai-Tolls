@@ -3,9 +3,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
-  createConversation,
+  createConversationRemote,
   setActiveConversation,
-  deleteConversation,
+  deleteConversationRemote,
+  loadMessagesRemote,
 } from "@/store/chatSlice";
 import { MessageSquare, Plus, Trash2, Code2, Database, Settings } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -19,12 +20,12 @@ export const ConversationSidebar: React.FC = () => {
   );
 
   const handleCreate = () => {
-    dispatch(createConversation());
+    dispatch(createConversationRemote());
   };
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    dispatch(deleteConversation(id));
+    dispatch(deleteConversationRemote(id));
   };
 
   const navItems = [
@@ -76,7 +77,10 @@ export const ConversationSidebar: React.FC = () => {
           {conversations.map((conversation) => (
             <div
               key={conversation.id}
-              onClick={() => dispatch(setActiveConversation(conversation.id))}
+              onClick={() => {
+                dispatch(setActiveConversation(conversation.id));
+                dispatch(loadMessagesRemote(conversation.id));
+              }}
               className={cn(
                 "group flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 activeConversationId === conversation.id

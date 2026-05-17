@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { listDocs } from "@/services/rag/RAG";
+import { hydrateFromDb, listDocs } from "@/services/rag/RAG";
 
 export default function KBViewerPage() {
   const params = useSearchParams();
@@ -15,8 +15,22 @@ export default function KBViewerPage() {
   const startLine = startLineParam ? parseInt(startLineParam, 10) : undefined;
   const endLine = endLineParam ? parseInt(endLineParam, 10) : undefined;
 
-  const docs = useMemo(() => listDocs(), []);
+  const [docs, setDocs] = useState(() => listDocs());
   const listRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const res = await hydrateFromDb();
+      if (!alive) return;
+      if (res.success) {
+        setDocs(listDocs());
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!listRef.current) return;
@@ -24,7 +38,7 @@ export default function KBViewerPage() {
       const items = listRef.current.querySelectorAll<HTMLDivElement>(
         '[data-role="kb-chunk"]',
       );
-      for (const el of items) {
+      for (const el of Array.from(items)) {
         const fn = el.getAttribute("data-filename") || "";
         const idx = el.getAttribute("data-chunk-index");
         if (fn === (filename || "") && String(chunkIndex) === idx) {
@@ -37,7 +51,7 @@ export default function KBViewerPage() {
         }
       }
     }
-  }, [filename, chunkIndex]);
+  }, [filename, chunkIndex, docs.length]);
 
   return (
     <div className="mx-auto max-w-4xl p-4">

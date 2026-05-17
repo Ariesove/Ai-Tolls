@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "set NEXT_TELEMETRY_DISABLED=1&& set NEXT_IGNORE_INCORRECT_LOCKFILE=1&& next dev",
+    "build": "set NEXT_TELEMETRY_DISABLED=1&& set NEXT_IGNORE_INCORRECT_LOCKFILE=1&& next build",
     "start": "next start",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
@@ -23,6 +23,7 @@
     "mermaid": "^10.9.1",
     "next": "14.2.3",
     "pdfjs-dist": "^3.11.174",
+    "pg": "^8.20.0",
     "react": "18.2.0",
     "react-diff-viewer-continued": "^4.2.0",
     "react-dom": "18.2.0",

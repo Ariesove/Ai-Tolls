@@ -1,0 +1,70 @@
+"filename", "language", "TypeScript", "TypeScript JSX", "PostCSS", "comment", "blank", "total"
+"e:\AI项目实践\Ai-Tolls\src\app\code-review\page.tsx", "TypeScript JSX", 0, 8, 0, 0, 3, 11
+"e:\AI项目实践\Ai-Tolls\src\app\globals.css", "PostCSS", 0, 0, 12, 0, 2, 14
+"e:\AI项目实践\Ai-Tolls\src\app\kb\viewer\page.tsx", "TypeScript JSX", 0, 108, 0, 0, 6, 114
+"e:\AI项目实践\Ai-Tolls\src\app\layout.tsx", "TypeScript JSX", 0, 25, 0, 1, 2, 28
+"e:\AI项目实践\Ai-Tolls\src\app\page.tsx", "TypeScript JSX", 0, 61, 0, 3, 7, 71
+"e:\AI项目实践\Ai-Tolls\src\app\providers.tsx", "TypeScript JSX", 0, 11, 0, 0, 3, 14
+"e:\AI项目实践\Ai-Tolls\src\components\features\ChartComponent\ChatInput.tsx", "TypeScript JSX", 0, 138, 0, 3, 16, 157
+"e:\AI项目实践\Ai-Tolls\src\components\features\ChartComponent\ChatWindow.tsx", "TypeScript JSX", 0, 210, 0, 16, 19, 245
+"e:\AI项目实践\Ai-Tolls\src\components\features\ChartComponent\MessageItem.tsx", "TypeScript JSX", 0, 495, 0, 1, 23, 519
+"e:\AI项目实践\Ai-Tolls\src\components\features\ChartComponent\ModelSelector.tsx", "TypeScript JSX", 0, 60, 0, 0, 7, 67
+"e:\AI项目实践\Ai-Tolls\src\components\features\Common\ConversationSidebar.tsx", "TypeScript JSX", 0, 100, 0, 1, 9, 110
+"e:\AI项目实践\Ai-Tolls\src\components\features\Common\KnowledgeBaseDialog.tsx", "TypeScript JSX", 0, 403, 0, 1, 28, 432
+"e:\AI项目实践\Ai-Tolls\src\components\features\Common\SettingsDialog.tsx", "TypeScript JSX", 0, 114, 0, 0, 10, 124
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\CodeReview.tsx", "TypeScript JSX", 0, 274, 0, 1, 16, 291
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\ReviewHistoryPanel.tsx", "TypeScript JSX", 0, 151, 0, 0, 12, 163
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\ScoreCard.tsx", "TypeScript JSX", 0, 69, 0, 0, 8, 77
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\SummaryCard.tsx", "TypeScript JSX", 0, 256, 0, 0, 17, 273
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\ArchitectAgent.tsx", "TypeScript JSX", 0, 17, 0, 0, 4, 21
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\BaseAgent.tsx", "TypeScript JSX", 0, 167, 0, 0, 11, 178
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\DiffAgent.tsx", "TypeScript JSX", 0, 19, 0, 0, 4, 23
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\LinterAgent.tsx", "TypeScript JSX", 0, 17, 0, 0, 4, 21
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\RAGParse.tsx", "TypeScript JSX", 0, 23, 0, 0, 4, 27
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\RAGSearch.tsx", "TypeScript JSX", 0, 21, 0, 0, 4, 25
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\RefactorAgent.tsx", "TypeScript JSX", 0, 19, 0, 0, 4, 23
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\WorkflowBar.tsx", "TypeScript JSX", 0, 77, 0, 0, 7, 84
+"e:\AI项目实践\Ai-Tolls\src\components\features\code-review\workFlowAgent\WorkflowStrip.tsx", "TypeScript JSX", 0, 140, 0, 6, 10, 156
+"e:\AI项目实践\Ai-Tolls\src\components\features\index.css", "PostCSS", 0, 0, 5, 0, 0, 5
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\AgentsTab.tsx", "TypeScript JSX", 0, 122, 0, 0, 5, 127
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\DiffModal.tsx", "TypeScript JSX", 0, 131, 0, 0, 7, 138
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\EvidenceTab.tsx", "TypeScript JSX", 0, 77, 0, 0, 4, 81
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\FinalTab.tsx", "TypeScript JSX", 0, 97, 0, 0, 6, 103
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\OverviewTab.tsx", "TypeScript JSX", 0, 81, 0, 0, 9, 90
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\SourceEditor.tsx", "TypeScript JSX", 0, 47, 0, 0, 5, 52
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\context\CodeReviewContext.tsx", "TypeScript JSX", 0, 68, 0, 0, 9, 77
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\context\useReviewCore.ts", "TypeScript", 364, 0, 0, 0, 29, 393
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\context\useReviewHistory.ts", "TypeScript", 50, 0, 0, 0, 9, 59
+"e:\AI项目实践\Ai-Tolls\src\components\features\review\context\useReviewUI.ts", "TypeScript", 41, 0, 0, 0, 6, 47
+"e:\AI项目实践\Ai-Tolls\src\components\ui\Button.tsx", "TypeScript JSX", 0, 37, 0, 4, 6, 47
+"e:\AI项目实践\Ai-Tolls\src\components\ui\Input.tsx", "TypeScript JSX", 0, 20, 0, 0, 4, 24
+"e:\AI项目实践\Ai-Tolls\src\components\ui\TabButton.tsx", "TypeScript JSX", 0, 42, 0, 0, 4, 46
+"e:\AI项目实践\Ai-Tolls\src\components\ui\Textarea.tsx", "TypeScript JSX", 0, 19, 0, 0, 4, 23
+"e:\AI项目实践\Ai-Tolls\src\lib\result.ts", "TypeScript", 7, 0, 0, 0, 2, 9
+"e:\AI项目实践\Ai-Tolls\src\lib\utils.test.ts", "TypeScript", 37, 0, 0, 0, 7, 44
+"e:\AI项目实践\Ai-Tolls\src\lib\utils.ts", "TypeScript", 99, 0, 0, 0, 9, 108
+"e:\AI项目实践\Ai-Tolls\src\services\agents\ArchitectAgent.ts", "TypeScript", 33, 0, 0, 3, 3, 39
+"e:\AI项目实践\Ai-Tolls\src\services\agents\BaseAgent.ts", "TypeScript", 199, 0, 0, 20, 29, 248
+"e:\AI项目实践\Ai-Tolls\src\services\agents\BaseAgent1.ts", "TypeScript", 14, 0, 0, 4, 3, 21
+"e:\AI项目实践\Ai-Tolls\src\services\agents\LinterAgent.ts", "TypeScript", 34, 0, 0, 3, 3, 40
+"e:\AI项目实践\Ai-Tolls\src\services\agents\Orchestrator.ts", "TypeScript", 79, 0, 0, 15, 9, 103
+"e:\AI项目实践\Ai-Tolls\src\services\agents\RAGAgent.ts", "TypeScript", 2, 0, 0, 0, 2, 4
+"e:\AI项目实践\Ai-Tolls\src\services\agents\RefactorAgent.ts", "TypeScript", 56, 0, 0, 0, 5, 61
+"e:\AI项目实践\Ai-Tolls\src\services\agents\agentUtils.ts", "TypeScript", 18, 0, 0, 1, 3, 22
+"e:\AI项目实践\Ai-Tolls\src\services\agents\types.ts", "TypeScript", 39, 0, 0, 5, 8, 52
+"e:\AI项目实践\Ai-Tolls\src\services\api\mockAiService.ts", "TypeScript", 15, 0, 0, 1, 6, 22
+"e:\AI项目实践\Ai-Tolls\src\services\functionCalling\enhancedTools.ts", "TypeScript", 135, 0, 0, 30, 20, 185
+"e:\AI项目实践\Ai-Tolls\src\services\functionCalling\functionCalling.test.ts", "TypeScript", 168, 0, 0, 13, 47, 228
+"e:\AI项目实践\Ai-Tolls\src\services\functionCalling\functionCalling.ts", "TypeScript", 150, 0, 0, 38, 28, 216
+"e:\AI项目实践\Ai-Tolls\src\services\functionCalling\tools.ts", "TypeScript", 143, 0, 0, 25, 13, 181
+"e:\AI项目实践\Ai-Tolls\src\services\rag\RAG.ts", "TypeScript", 429, 0, 0, 5, 10, 444
+"e:\AI项目实践\Ai-Tolls\src\services\rag\Rag2.ts", "TypeScript", 171, 0, 0, 43, 24, 238
+"e:\AI项目实践\Ai-Tolls\src\services\rag\ingest.ts", "TypeScript", 103, 0, 0, 1, 11, 115
+"e:\AI项目实践\Ai-Tolls\src\services\rag\mockRAGEngine.ts", "TypeScript", 130, 0, 0, 25, 35, 190
+"e:\AI项目实践\Ai-Tolls\src\services\rag\reviewContext.ts", "TypeScript", 65, 0, 0, 0, 11, 76
+"e:\AI项目实践\Ai-Tolls\src\services\review\aggregate.ts", "TypeScript", 219, 0, 0, 0, 31, 250
+"e:\AI项目实践\Ai-Tolls\src\store\chatSlice.ts", "TypeScript", 94, 0, 0, 0, 5, 99
+"e:\AI项目实践\Ai-Tolls\src\store\hooks.ts", "TypeScript", 5, 0, 0, 1, 2, 8
+"e:\AI项目实践\Ai-Tolls\src\store\index.ts", "TypeScript", 9, 0, 0, 0, 3, 12
+"e:\AI项目实践\Ai-Tolls\src\types\chat.ts", "TypeScript", 51, 0, 0, 0, 10, 61
+"Total", "-", 2959, 3724, 17, 270, 686, 7656

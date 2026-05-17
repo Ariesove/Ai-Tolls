@@ -2,7 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { createConversation } from "@/store/chatSlice";
+import {
+  createConversation,
+  createConversationRemote,
+  hydrateConversations,
+  loadMessagesRemote,
+} from "@/store/chatSlice";
+import { hydrateFromDb as hydrateKbFromDb } from "@/services/rag/RAG";
 import { ConversationSidebar } from "@/components/features/Common/ConversationSidebar";
 import { ChatWindow } from "@/components/features/ChartComponent/ChatWindow";
 import { ModelSelector } from "@/components/features/ChartComponent/ModelSelector";
@@ -18,12 +24,31 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // Initialize a conversation if none exists
   useEffect(() => {
-    if (conversations.length === 0) {
-      dispatch(createConversation());
-    }
-  }, [conversations.length, dispatch]);
+    let alive = true;
+    void (async () => {
+      try {
+        void hydrateKbFromDb();
+        const data = await dispatch(hydrateConversations()).unwrap();
+        if (!alive) return;
+        if (data.length === 0) {
+          const created = await dispatch(createConversationRemote()).unwrap();
+          if (!alive) return;
+          dispatch(loadMessagesRemote(created.id));
+        } else {
+          dispatch(loadMessagesRemote(data[0].id));
+        }
+      } catch {
+        if (!alive) return;
+        if (conversations.length === 0) {
+          dispatch(createConversation());
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [dispatch, conversations.length]);
 
   return (
     <main className="flex h-screen w-full overflow-hidden bg-zinc-950 text-zinc-100">

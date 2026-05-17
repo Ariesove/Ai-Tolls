@@ -12,6 +12,8 @@ import ArchitectAgent from "./ArchitectAgent";
 import RefactorAgent from "./RefactorAgent";
 import DiffAgent from "./DiffAgent";
 
+export type { StepStatus } from "./BaseAgent";
+
 export interface WorkflowStripModel {
   kbStatus: StepStatus;
   kbMeta?: string;

@@ -9,7 +9,8 @@ import React, {
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 
-import { addText, search, StoredDocument } from "@/services/rag/RAG";
+import { addText, hydrateFromDb, search, StoredDocument } from "@/services/rag/RAG";
+import * as kbApi from "@/services/api/kb";
 import { BookOpen, Check, X, Search, UploadCloud } from "lucide-react";
 
 interface KnowledgeBaseDialogProps {
@@ -154,10 +155,26 @@ export const KnowledgeBaseDialog: React.FC<KnowledgeBaseDialogProps> = ({
     setError("");
 
     try {
-      await addText(value, {
-        source: fileName ? "file-upload" : "user-paste",
-        filename: fileName || undefined,
+      const source = fileName ? "file-upload" : "user-paste";
+      const cleanFilename = fileName ? fileName.split(" (")[0] : "";
+      const filename =
+        cleanFilename ||
+        `pasted-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
+
+      const ingestRes = await kbApi.ingest({
+        filename,
+        content: value,
+        source,
       });
+
+      if (ingestRes.success) {
+        await hydrateFromDb();
+      } else {
+        await addText(value, {
+          source,
+          filename,
+        });
+      }
 
       setSuccess(true);
       if (successTimerRef.current) window.clearTimeout(successTimerRef.current);

@@ -9,8 +9,12 @@ import {
 } from "@/store/chatSlice";
 import { setLastMessageCitations } from "@/store/chatSlice";
 import { mockAiService } from "@/services/api/mockAiService";
-import { ragEngine as mockRAGEngine } from "@/services/rag/mockRAGEngine";
 import { getLLm } from "@/services/rag/RAG";
+import {
+  appendMessage as appendMessageRemote,
+  createConversation as upsertConversationRemote,
+} from "@/services/api/chat";
+import { v4 as uuidv4 } from "uuid";
 
 import { processFunctionCall } from "@/services/functionCalling/functionCalling";
 import { MessageItem } from "./MessageItem";
@@ -82,6 +86,14 @@ export const ChatWindow: React.FC = () => {
   const handleSend = async (content: string, attachments?: Attachment[]) => {
     if (!activeConversationId) return;
 
+    const userCreatedAt = Date.now();
+    const conv = activeConversation;
+    void upsertConversationRemote({
+      id: activeConversationId,
+      title: conv?.title || "New Chat",
+      createdAt: conv?.createdAt ?? userCreatedAt,
+      updatedAt: Date.now(),
+    });
     // 1. Add User Message
     dispatch(
       addMessage({
@@ -91,6 +103,14 @@ export const ChatWindow: React.FC = () => {
         attachments,
       }),
     );
+    void appendMessageRemote(activeConversationId, {
+      id: uuidv4(),
+      role: "user",
+      content,
+      createdAt: userCreatedAt,
+      status: "sent",
+      attachments,
+    });
 
     // 2. Add empty AI Message (Placeholder)
     dispatch(
@@ -102,6 +122,19 @@ export const ChatWindow: React.FC = () => {
     );
     dispatch(setStreaming(true));
 
+    let assistantContent = "";
+    let assistantCitations: Array<{
+      filename?: string;
+      chunkIndex: number;
+      preview: string;
+      score?: number;
+      content?: string;
+      startLine?: number;
+      endLine?: number;
+      hitText?: string;
+    }> | null = null;
+    let hasError = false;
+
     try {
       // Check if OpenAI Key is set to determine which engine to use
       const apiKey = localStorage.getItem("OPENAI_API_KEY") || "";
@@ -109,6 +142,7 @@ export const ChatWindow: React.FC = () => {
       if (useRealEngine) {
         console.log("useRealEngine");
         const result = await getLLm(content, (chunk) => {
+          assistantContent = chunk;
           dispatch(
             updateLastMessageContent({
               conversationId: activeConversationId,
@@ -117,6 +151,7 @@ export const ChatWindow: React.FC = () => {
           );
         });
         if (result && Array.isArray(result.citations)) {
+          assistantCitations = result.citations;
           dispatch(
             setLastMessageCitations({
               conversationId: activeConversationId,
@@ -134,60 +169,47 @@ export const ChatWindow: React.FC = () => {
           );
         }
       } else {
-        // --- MOCK FLOW (Fallback) ---
-
-        // 3. RAG Retrieval Step
-        const retrievedDocs = await mockRAGEngine.retrieve(content);
         let fullResponse = "";
-
-        if (retrievedDocs.length > 0) {
-          // Simulate streaming the RAG response
-          const ragResponse = mockRAGEngine.generateMockResponse(
-            content,
-            retrievedDocs,
-          );
-          const chunks = ragResponse.split("");
-          for (const chunk of chunks) {
-            await new Promise((resolve) => setTimeout(resolve, 20)); // Fast stream
+        await mockAiService.sendMessage(
+          [
+            ...activeConversation!.messages,
+            { id: "temp", role: "user", content, createdAt: Date.now() },
+          ],
+          (chunk) => {
             fullResponse += chunk;
+            assistantContent = fullResponse;
             dispatch(
               updateLastMessageContent({
                 conversationId: activeConversationId,
                 content: fullResponse,
               }),
             );
-          }
-        } else {
-          // Standard Mock Service (No RAG context found)
-          await mockAiService.sendMessage(
-            [
-              ...activeConversation!.messages,
-              { id: "temp", role: "user", content, createdAt: Date.now() },
-            ],
-            (chunk) => {
-              fullResponse += chunk;
-              dispatch(
-                updateLastMessageContent({
-                  conversationId: activeConversationId,
-                  content: fullResponse,
-                }),
-              );
-            },
-          );
-        }
+          },
+        );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to send message", error);
+      const message = error instanceof Error ? error.message : undefined;
+      hasError = true;
+      assistantContent = `Error: ${message || "Something went wrong."}`;
       // Show error in the chat
       dispatch(
         updateLastMessageContent({
           conversationId: activeConversationId,
-          content: `Error: ${error.message || "Something went wrong."}`,
+          content: assistantContent,
         }),
       );
     } finally {
       dispatch(setStreaming(false));
       dispatch(finalizeLastMessage({ conversationId: activeConversationId }));
+      void appendMessageRemote(activeConversationId, {
+        id: uuidv4(),
+        role: "assistant",
+        content: assistantContent,
+        createdAt: Date.now(),
+        status: hasError ? "error" : "sent",
+        citations: assistantCitations || undefined,
+      });
     }
   };
 
