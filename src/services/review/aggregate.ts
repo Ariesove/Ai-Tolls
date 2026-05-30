@@ -1,4 +1,4 @@
-import { AgentResult, AgentRole, ReviewComment } from "@/services/Agents2/types";
+import { AgentResult, AgentRole, ReviewComment } from "@/services/Agents/types";
 import { Result, Ok, Err } from "@/lib/result";
 
 export type ReviewDimension =

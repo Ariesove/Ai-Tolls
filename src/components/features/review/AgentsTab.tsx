@@ -2,7 +2,7 @@
 
 import React from "react";
 import { AlertCircle } from "lucide-react";
-import { AgentRole } from "@/services/Agents2/types";
+import { AgentRole } from "@/services/Agents/types";
 import { useCodeReviewContext } from "./context/CodeReviewContext";
 
 export const AgentsTab: React.FC = () => {

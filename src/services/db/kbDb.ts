@@ -238,3 +238,54 @@ export const exportKb = async (): Promise<
   }
 };
 
+export type KbChunkWithDocRow = {
+  documentId: string;
+  filename?: string;
+  source?: string;
+  documentContent: string;
+  chunkIndex: number;
+  chunkId: string;
+  chunkContent: string;
+  embedding: number[];
+};
+
+export const listChunksWithDocument = async (): Promise<
+  Result<KbChunkWithDocRow[]>
+> => {
+  const dbRes = getDb();
+  if (!dbRes.success) return dbRes;
+  const ready = await dbRes.data.ensureSchema();
+  if (!ready.success) return ready;
+
+  try {
+    const { rows } = await dbRes.data.pool.query<Record<string, unknown>>(
+      `SELECT
+         d.id AS document_id,
+         d.filename AS filename,
+         d.source AS source,
+         d.content AS document_content,
+         c.chunk_index AS chunk_index,
+         c.chunk_id AS chunk_id,
+         c.content AS chunk_content,
+         c.embedding AS embedding
+       FROM kb_chunks c
+       JOIN kb_documents d ON d.id = c.document_id
+       ORDER BY d.updated_at DESC, c.chunk_index ASC`,
+    );
+
+    const out: KbChunkWithDocRow[] = rows.map((r) => ({
+      documentId: String(r.document_id),
+      filename: typeof r.filename === "string" ? r.filename : undefined,
+      source: typeof r.source === "string" ? r.source : undefined,
+      documentContent:
+        typeof r.document_content === "string" ? r.document_content : "",
+      chunkIndex: Number(r.chunk_index) || 0,
+      chunkId: typeof r.chunk_id === "string" ? r.chunk_id : "",
+      chunkContent: typeof r.chunk_content === "string" ? r.chunk_content : "",
+      embedding: Array.isArray(r.embedding) ? (r.embedding as number[]) : [],
+    }));
+    return Ok(out);
+  } catch (e) {
+    return Err(`读取KB切片失败：${(e as Error).message}`);
+  }
+};

@@ -45,7 +45,7 @@ export const runReview = async (
   onRagStep?: OnRagStep,
 ): Promise<OrchestratorResult> => {
   onRagStep?.("kb", "running");
-  const kbRes = runRagParse();
+  const kbRes = await runRagParse();
   if (isOk(kbRes)) onRagStep?.("kb", "done", { kbCount: kbRes.data.kbCount });
   else onRagStep?.("kb", "error", { error: kbRes.error });
 

@@ -78,8 +78,26 @@ const IngestResponseSchema = z.object({
   dim: z.number().int().nonnegative(),
 });
 
+const RetrieveResponseSchema = z.object({
+  ctxText: z.string(),
+  hits: z.number().int().nonnegative(),
+  chars: z.number().int().nonnegative(),
+  dim: z.number().int().nonnegative().optional(),
+  evidence: z.array(
+    z.object({
+      title: z.string(),
+      filename: z.string().optional(),
+      chunkIndex: z.number().int().nonnegative(),
+      score: z.number(),
+      preview: z.string(),
+      content: z.string(),
+    }),
+  ),
+});
+
 export type KbExport = z.infer<typeof ExportSchema>;
 export type KbIngestResult = z.infer<typeof IngestResponseSchema>;
+export type KbRetrieveResult = z.infer<typeof RetrieveResponseSchema>;
 
 export const ingest = async (input: {
   filename: string;
@@ -118,3 +136,17 @@ export const retryExportAll = async (
   return Err("读取KB失败");
 };
 
+export const retrieve = async (input: {
+  query: string;
+  k?: number;
+}): Promise<Result<KbRetrieveResult>> => {
+  const schema = DataEnvelope(RetrieveResponseSchema);
+  const res = await requestJson(
+    "/api/kb/retrieve",
+    { method: "POST", body: JSON.stringify(input) },
+    schema,
+    { timeoutMs: 60_000 },
+  );
+  if (!res.success) return res;
+  return Ok(res.data.data);
+};

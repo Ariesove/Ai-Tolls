@@ -1,5 +1,6 @@
 import { Result, Ok, Err } from "@/lib/result";
 import { search } from "@/services/rag/RAG";
+import { buildRagCtxText } from "@/services/rag/ragEvidence";
 
 const asString = (v: unknown): string | undefined =>
   typeof v === "string" ? v : undefined;
@@ -64,9 +65,7 @@ export const buildReviewContext = async (
       return `${header}\n${r.doc.pageContent}`;
     });
 
-    const context = blocks.length
-      ? `来自知识库的相关片段（Top ${blocks.length}）：\n\n${blocks.join("\n\n---\n\n")}`
-      : "";
+    const context = buildRagCtxText(blocks);
 
     return Ok(context);
   } catch (e) {

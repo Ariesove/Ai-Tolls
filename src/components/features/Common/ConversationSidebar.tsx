@@ -8,7 +8,14 @@ import {
   deleteConversationRemote,
   loadMessagesRemote,
 } from "@/store/chatSlice";
-import { MessageSquare, Plus, Trash2, Code2, Database, Settings } from "lucide-react";
+import {
+  MessageSquare,
+  Plus,
+  Trash2,
+  Code2,
+  Database,
+  Settings,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +38,6 @@ export const ConversationSidebar: React.FC = () => {
   const navItems = [
     { label: "AI Chat", href: "/", icon: MessageSquare },
     { label: "Code Review", href: "/code-review", icon: Code2 },
-    { label: "Knowledge Base", href: "/ingest", icon: Database },
   ];
 
   return (
@@ -46,13 +52,17 @@ export const ConversationSidebar: React.FC = () => {
               "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group",
               pathname === item.href
                 ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
-                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent"
+                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent",
             )}
           >
-            <item.icon className={cn(
-              "h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
-              pathname === item.href ? "text-indigo-400" : "text-zinc-500 group-hover:text-zinc-300"
-            )} />
+            <item.icon
+              className={cn(
+                "h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
+                pathname === item.href
+                  ? "text-indigo-400"
+                  : "text-zinc-500 group-hover:text-zinc-300",
+              )}
+            />
             {item.label}
           </Link>
         ))}
@@ -71,7 +81,9 @@ export const ConversationSidebar: React.FC = () => {
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
         <div className="px-3 mb-2">
-          <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">History</span>
+          <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
+            History
+          </span>
         </div>
         <div className="space-y-1">
           {conversations.map((conversation) => (

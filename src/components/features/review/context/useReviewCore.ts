@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { CodeReviewOrchestrator } from "@/services/Agents2/Orchestrator";
-import { AgentTask, AgentRole, AgentResult } from "@/services/Agents2/types";
+import { CodeReviewOrchestrator } from "@/services/Agents/Orchestrator";
+import { AgentTask, AgentRole, AgentResult } from "@/services/Agents/types";
 import { isOk } from "@/lib/result";
 import { listDocs } from "@/services/rag/RAG";
+import { parseRagEvidence, RagEvidenceItem } from "@/services/rag/ragEvidence";
 import {
   AggregatedReview,
   aggregateAgentResults,
@@ -21,9 +22,7 @@ export function useReviewCore() {
   const [results, setResults] = useState<AgentResult[]>([]);
   const [finalCode, setFinalCode] = useState("");
   const [commandText, setCommandText] = useState("");
-  const [ragEvidence, setRagEvidence] = useState<
-    Array<{ title: string; preview: string }>
-  >([]);
+  const [ragEvidence, setRagEvidence] = useState<RagEvidenceItem[]>([]);
   const [agentStatus, setAgentStatus] = useState<Record<string, string>>({});
   const [ragStatus, setRagStatus] = useState<StepStatus>("idle");
   const [ragMeta, setRagMeta] = useState<{
@@ -117,17 +116,10 @@ export function useReviewCore() {
     return out;
   }, []);
 
-  const parseRagEvidence = useCallback((ctxText: string) => {
-    const start = ctxText.indexOf("：\n\n");
-    const body = start !== -1 ? ctxText.slice(start + 3) : ctxText;
-    const blocks = body.split("\n\n---\n\n").filter(Boolean);
-    return blocks.slice(0, 4).map((b) => {
-      const [firstLine, ...rest] = b.split("\n");
-      const title = (firstLine || "").trim();
-      const preview = rest.join("\n").trim().slice(0, 260);
-      return { title, preview };
-    });
-  }, []);
+  const parseRagEvidenceFromCtxText = useCallback(
+    (ctxText: string) => parseRagEvidence(ctxText),
+    [],
+  );
 
   useEffect(() => {
     try {
@@ -284,6 +276,13 @@ export function useReviewCore() {
           });
         },
         (step, status, payload) => {
+          if (step === "kb") {
+            if (status === "done") {
+              const n = typeof payload?.kbCount === "number" ? payload.kbCount : 0;
+              setKbCount(n);
+            }
+            return;
+          }
           if (step === "retrieve") {
             setRagStatus(
               status === "running"
@@ -299,7 +298,7 @@ export function useReviewCore() {
                 hits,
                 chars: typeof payload?.chars === "number" ? payload.chars : 0,
               });
-              if (ctxText) setRagEvidence(parseRagEvidence(ctxText));
+              if (ctxText) setRagEvidence(parseRagEvidenceFromCtxText(ctxText));
             }
           }
         },
@@ -386,7 +385,7 @@ export function useReviewCore() {
     streamBufRef,
     rafRef,
     extractSuggestedCodeSoFar,
-    parseRagEvidence,
+    parseRagEvidence: parseRagEvidenceFromCtxText,
     steps,
     scores,
     applyToEditor,
