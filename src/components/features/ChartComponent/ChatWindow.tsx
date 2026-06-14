@@ -6,10 +6,10 @@ import {
   updateLastMessageContent,
   setStreaming,
   finalizeLastMessage,
+  setLastMessageCitations,
+  updateLastMessageAttachments,
 } from "@/store/chatSlice";
-import { setLastMessageCitations } from "@/store/chatSlice";
-import { mockAiService } from "@/services/api/mockAiService";
-import { getLLm } from "@/services/rag/RAG";
+import { getLLm, hydrateFromDb } from "@/services/rag/RAG";
 import {
   appendMessage as appendMessageRemote,
   createConversation as upsertConversationRemote,
@@ -43,7 +43,7 @@ export const ChatWindow: React.FC = () => {
       let c = scrollHeight - scrollTop - clientHeight;
       console.log("c", c);
 
-      if (scrollHeight - scrollTop - clientHeight < 260) {
+      if (scrollHeight - scrollTop - clientHeight < 150) {
         setIsAtBottom(true);
       } else {
         setIsAtBottom(false);
@@ -58,10 +58,11 @@ export const ChatWindow: React.FC = () => {
       // 判断是否“接近底部”（比如距离底部 < 10px）
       let c = scrollHeight - scrollTop - clientHeight;
       console.log("c", c);
+      console.log("scrollHeight", scrollHeight, scrollTop, clientHeight);
       requestAnimationFrame(() => {
         // 【策略选择】流式高频更新用 'auto' 防卡顿，非流式用 'smooth' 做过渡
         const behavior = isStreaming ? "auto" : "smooth";
-        if (scrollHeight - scrollTop - clientHeight < 260 && isAtBottom) {
+        if (scrollHeight - scrollTop - clientHeight < 150 && isAtBottom) {
           scrollRef.current?.scrollTo({
             top: scrollRef.current.scrollHeight,
             behavior: behavior,
@@ -81,6 +82,10 @@ export const ChatWindow: React.FC = () => {
     // Listen for storage changes in case settings change
     window.addEventListener("storage", checkEngine);
     return () => window.removeEventListener("storage", checkEngine);
+  }, []);
+
+  useEffect(() => {
+    void hydrateFromDb();
   }, []);
 
   const handleSend = async (content: string, attachments?: Attachment[]) => {
@@ -137,11 +142,18 @@ export const ChatWindow: React.FC = () => {
 
     try {
       // Check if OpenAI Key is set to determine which engine to use
-      const apiKey = localStorage.getItem("OPENAI_API_KEY") || "";
-      const useRealEngine = !!apiKey;
-      if (useRealEngine) {
-        console.log("useRealEngine");
-        const result = await getLLm(content, (chunk) => {
+      const apiKey = (localStorage.getItem("OPENAI_API_KEY") || "").trim();
+      if (!apiKey) {
+        throw new Error(
+          "未配置 OPENAI_API_KEY：请在 Settings 中填写后再发送消息",
+        );
+      }
+
+      console.log("useRealEngine");
+      console.log("发送内容：", content);
+      const result = await getLLm(
+        content,
+        (chunk) => {
           assistantContent = chunk;
           dispatch(
             updateLastMessageContent({
@@ -149,49 +161,41 @@ export const ChatWindow: React.FC = () => {
               content: chunk,
             }),
           );
-        });
-        if (result && Array.isArray(result.citations)) {
-          assistantCitations = result.citations;
-          dispatch(
-            setLastMessageCitations({
-              conversationId: activeConversationId,
-              citations: result.citations.map((c) => ({
-                filename: c.filename,
-                chunkIndex: c.chunkIndex,
-                preview: c.preview,
-                score: c.score,
-                startLine: c.startLine,
-                endLine: c.endLine,
-                content: c.content,
-                hitText: c.hitText,
-              })),
-            }),
-          );
-        }
-      } else {
-        let fullResponse = "";
-        await mockAiService.sendMessage(
-          [
-            ...activeConversation!.messages,
-            { id: "temp", role: "user", content, createdAt: Date.now() },
-          ],
-          (chunk) => {
-            fullResponse += chunk;
-            assistantContent = fullResponse;
-            dispatch(
-              updateLastMessageContent({
-                conversationId: activeConversationId,
-                content: fullResponse,
-              }),
-            );
-          },
+        },
+        attachments,
+      );
+      if (result && Array.isArray(result.citations)) {
+        assistantCitations = result.citations;
+        dispatch(
+          setLastMessageCitations({
+            conversationId: activeConversationId,
+            citations: result.citations.map((c) => ({
+              filename: c.filename,
+              chunkIndex: c.chunkIndex,
+              preview: c.preview,
+              score: c.score,
+              startLine: c.startLine,
+              endLine: c.endLine,
+              content: c.content,
+              hitText: c.hitText,
+            })),
+          }),
+        );
+      }
+      // 处理生成的图片附件
+      if (result && result.generatedAttachments) {
+        dispatch(
+          updateLastMessageAttachments({
+            conversationId: activeConversationId,
+            attachments: result.generatedAttachments,
+          }),
         );
       }
     } catch (error: unknown) {
       console.error("Failed to send message", error);
       const message = error instanceof Error ? error.message : undefined;
       hasError = true;
-      assistantContent = `Error: ${message || "Something went wrong."}`;
+      assistantContent = `错误：${message || "发生未知错误"}`;
       // Show error in the chat
       dispatch(
         updateLastMessageContent({

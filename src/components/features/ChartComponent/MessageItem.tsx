@@ -443,7 +443,7 @@ const CitationItem: React.FC<{ c: Citation }> = ({ c }) => {
               ? ` · L${c.startLine}-${c.endLine}`
               : ""}
           </span>
-          {typeof c.score === "number" && (
+          {typeof c.score === "number" && c.score >= 0.1 && (
             <span className="rounded bg-zinc-800 px-1 py-0.5 text-[10px] text-zinc-500">
               {c.score.toFixed(2)}
             </span>
@@ -469,7 +469,7 @@ const CitationItem: React.FC<{ c: Citation }> = ({ c }) => {
         <div className="line-clamp-2 text-zinc-500">{c.preview}</div>
       ) : (
         <div className="mt-1 whitespace-pre-wrap break-words rounded border border-zinc-800 bg-zinc-950 p-2 text-zinc-300">
-          {c.hitText || c.content || c.preview}
+          {c.hitText || c.preview}
         </div>
       )}
     </li>

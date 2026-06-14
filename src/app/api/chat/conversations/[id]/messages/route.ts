@@ -17,7 +17,7 @@ const CitationSchema = z.object({
   filename: z.string().optional(),
   chunkIndex: z.number().int().nonnegative(),
   preview: z.string(),
-  score: z.number().optional(),
+  score: z.number().nullable().optional(),
   content: z.string().optional(),
   startLine: z.number().int().optional(),
   endLine: z.number().int().optional(),
@@ -62,6 +62,12 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     );
   }
 
+  const citations = parsed.data.citations?.map((c) => {
+    const score =
+      typeof c.score === "number" && Number.isFinite(c.score) ? c.score : undefined;
+    return { ...c, score };
+  });
+
   const res = await appendMessage({
     id: parsed.data.id,
     conversationId: paramsParsed.data.id,
@@ -70,11 +76,10 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     createdAt: parsed.data.createdAt,
     status: parsed.data.status,
     attachments: parsed.data.attachments,
-    citations: parsed.data.citations,
+    citations,
   });
   if (!res.success) {
     return NextResponse.json({ error: res.error }, { status: 500 });
   }
   return NextResponse.json({ data: res.data }, { status: 201 });
 }
-

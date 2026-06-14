@@ -88,6 +88,14 @@ const chatSlice = createSlice({
         lastMessage.citations = citations;
       }
     },
+    updateLastMessageAttachments: (state, action: PayloadAction<{ conversationId: string; attachments: Attachment[] }>) => {
+      const { conversationId, attachments } = action.payload;
+      const conversation = state.conversations.find((c) => c.id === conversationId);
+      if (conversation && conversation.messages.length > 0) {
+        const lastMessage = conversation.messages[conversation.messages.length - 1];
+        lastMessage.attachments = attachments;
+      }
+    },
     setActiveConversation: (state, action: PayloadAction<string>) => {
       state.activeConversationId = action.payload;
     },
@@ -179,7 +187,8 @@ export const {
   finalizeLastMessage,
   setStreaming,
   deleteConversation,
-  setLastMessageCitations
+  setLastMessageCitations,
+  updateLastMessageAttachments
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

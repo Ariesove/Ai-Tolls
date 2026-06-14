@@ -195,9 +195,12 @@ export const appendMessage = async (input: {
   const ready = await dbRes.data.ensureSchema();
   if (!ready.success) return ready;
   try {
+    const attachmentsJson =
+      input.attachments != null ? JSON.stringify(input.attachments) : null;
+    const citationsJson = input.citations != null ? JSON.stringify(input.citations) : null;
     await dbRes.data.pool.query(
       `INSERT INTO messages(id, conversation_id, role, content, created_at, status, attachments, citations)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
        ON CONFLICT (id) DO UPDATE SET content=EXCLUDED.content, status=EXCLUDED.status, attachments=EXCLUDED.attachments, citations=EXCLUDED.citations`,
       [
         input.id,
@@ -206,8 +209,8 @@ export const appendMessage = async (input: {
         input.content,
         input.createdAt,
         input.status ?? null,
-        input.attachments ?? null,
-        input.citations ?? null,
+        attachmentsJson,
+        citationsJson,
       ],
     );
     await dbRes.data.pool.query(

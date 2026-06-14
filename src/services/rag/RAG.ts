@@ -2,11 +2,13 @@ import {
   lcTools
 } from './../functionCalling/tools';
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
-
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { HumanMessage } from "@langchain/core/messages";
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { Err, Ok, type Result } from "@/lib/result";
 import * as kbApi from "@/services/api/kb";
+import type { Attachment } from "@/types/chat";
+import { shouldGenerateImage, extractImagePrompt, generateImage } from "@/services/image-generation";
 export interface StoredDocument {
   pageContent: string;
   metadata: Record<string, unknown>;
@@ -263,8 +265,7 @@ const computeHitInsideChunk = (query: string, chunk: string, chunkStartLine?: nu
     }
   }
   if (hitStart === -1) {
-    hitStart = 0;
-    hitEnd = Math.min(lines.length - 1, 0);
+    return { hitStartAbs: undefined, hitEndAbs: undefined, hitText: "" };
   }
   let winStart = Math.max(0, hitStart - 2);
   let winEnd = Math.min(lines.length - 1, hitEnd + 2);
@@ -275,15 +276,20 @@ const computeHitInsideChunk = (query: string, chunk: string, chunkStartLine?: nu
 };
 
 const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
+  const n = Math.min(vecA.length, vecB.length);
+  if (n === 0) return 0;
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
-  for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
-    normA += vecA[i] * vecA[i];
-    normB += vecB[i] * vecB[i];
+  for (let i = 0; i < n; i++) {
+    const a = vecA[i] ?? 0;
+    const b = vecB[i] ?? 0;
+    dotProduct += a * b;
+    normA += a * a;
+    normB += b * b;
   }
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom ? dotProduct / denom : 0;
 };
 
 /**
@@ -378,8 +384,9 @@ const init = () => {
       apiKey: apiKey,
       configuration: {
         baseURL: baseUrl || undefined,
+        timeout: 120000, // 增加超时到 2 分钟
       },
-      modelName: "gpt-3.5-turbo",
+      model: "gpt-4o",
       temperature: 0.7,
     });
   }
@@ -389,26 +396,126 @@ const init = () => {
 /**
  * Search for similar documents
  */
-export const search = async (query: string, k: number = 4): Promise<{ doc: StoredDocument; score: number }[]> => {
-  // 1. Vectorize the query
-  const queryVector = await embedQuery(query);
+export const search = async (
+  query: string,
+  k: number = 4,
+): Promise<{ doc: StoredDocument; score: number }[]> => {
+  const qRaw = typeof query === "string" ? query.trim() : "";
+  if (!qRaw) return [];
 
-  // 2. Calculate Similarity
-  const scoredDocs = docs.map((doc) => ({
-    doc,
-    score: cosineSimilarity(queryVector, doc.vector),
-  }));
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const qNorm = normalize(qRaw);
+  if (!qNorm) return [];
 
-  // 3. Sort by score
-  scoredDocs.sort((a, b) => b.score - a.score);
+  const latinTokens = (qRaw.match(/[a-z0-9]+/gi) || [])
+    .map((t) => t.toLowerCase())
+    .filter((t) => t.length >= 2);
+  const zhTokens = (qRaw.match(/[\u4e00-\u9fa5]{2,}/g) || []).filter(Boolean);
+  const tokens = Array.from(new Set([...latinTokens, ...zhTokens, qNorm])).filter(Boolean);
 
-  return scoredDocs.slice(0, k);
+  const docNorm = (d: StoredDocument) => normalize(d.pageContent);
+  const filenameNorm = (d: StoredDocument) => {
+    const fn = (d.metadata as any)?.filename;
+    return typeof fn === "string" ? normalize(fn) : "";
+  };
+  const tokenHitCount = (d: StoredDocument) => {
+    const body = docNorm(d);
+    const fn = filenameNorm(d);
+    let hits = 0;
+    for (const t of tokens) {
+      const tn = normalize(String(t));
+      if (!tn) continue;
+      if (body.includes(tn) || fn.includes(tn)) hits++;
+    }
+    return hits;
+  };
+
+  const primaryLatin = latinTokens[0] || "";
+  const docsHitPrimaryLatin =
+    primaryLatin &&
+    docs.some((d) => docNorm(d).includes(primaryLatin) || filenameNorm(d).includes(primaryLatin));
+
+  const docCandidates = docsHitPrimaryLatin
+    ? docs.filter((d) => docNorm(d).includes(primaryLatin) || filenameNorm(d).includes(primaryLatin))
+    : docs;
+
+  let queryVector = await embedQuery(qRaw);
+  let vecCandidates = docCandidates.filter((d) => d.vector.length === queryVector.length);
+  if (vecCandidates.length === 0 && queryVector.length !== 64) {
+    const fallbackVec = embedFallback(qRaw);
+    if (docCandidates.some((d) => d.vector.length === fallbackVec.length)) {
+      queryVector = fallbackVec;
+      vecCandidates = docCandidates.filter((d) => d.vector.length === queryVector.length);
+    }
+  }
+  if (vecCandidates.length === 0) vecCandidates = docCandidates;
+
+  const qIsShortLatin = qNorm.length <= 6 && /^[a-z0-9]+$/i.test(qNorm);
+  const directMatches = vecCandidates.filter((d) => tokenHitCount(d) > 0);
+  const strictCandidates = qIsShortLatin && directMatches.length > 0 ? directMatches : vecCandidates;
+
+  const minScore = qNorm.length <= 6 ? 0.45 : 0.25;
+  const scored = strictCandidates
+    .map((doc) => {
+      const base = cosineSimilarity(queryVector, doc.vector);
+      const hits = tokenHitCount(doc);
+      const boost = hits > 0 ? hits * 0.25 : 0;
+      return { doc, score: base + boost };
+    })
+    .filter(({ doc, score }) => tokenHitCount(doc) > 0 || score >= minScore)
+    .sort((a, b) => b.score - a.score);
+
+  const unique = new Map<string, { doc: StoredDocument; score: number }>();
+  for (const it of scored) {
+    const fn = filenameNorm(it.doc);
+    const idx =
+      typeof (it.doc.metadata as any)?.chunkIndex === "number"
+        ? String((it.doc.metadata as any).chunkIndex)
+        : "na";
+    const key = `${fn}::${idx}::${normalize(it.doc.pageContent.slice(0, 120))}`;
+    const prev = unique.get(key);
+    if (!prev || it.score > prev.score) unique.set(key, it);
+  }
+
+  return Array.from(unique.values()).slice(0, k);
 };
 
-// 发起LLM请求 - 流式输出版本
+// 将 blob URL 转换为 base64
+const blobToBase64 = (url: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Image conversion timeout'));
+    }, 10000); // 10 秒超时
+
+    fetch(url)
+      .then(res => res.blob())
+      .then(blob => {
+        console.log(`Processing image: ${(blob.size / 1024).toFixed(1)}KB`);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          clearTimeout(timeout);
+          const result = reader.result as string;
+          console.log(`Base64 size: ${(result.length / 1024).toFixed(1)}KB`);
+          resolve(result);
+        };
+        reader.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Failed to read image'));
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(err => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+  });
+};
+
+// 发起LLM请求 - 支持多模态的流式输出版本
 export const getLLm = async (
   query: string,
   onChunk: (chunk: string) => void,
+  attachments?: Attachment[],
 ): Promise<{
   citations: {
     filename?: string;
@@ -420,17 +527,154 @@ export const getLLm = async (
     endLine?: number;
     hitText?: string;
   }[];
+  generatedAttachments?: Attachment[];
 }> => {
   const llm = init();
   const llmWithTools = (llm as any).bindTools?.(lcTools) || llm;
+
+  console.log("=== getLLm 被调用，query:", query);
+
+  // 测试 shouldGenerateImage 函数
+  console.log("测试1: '给我生成风景图片冬天' ->", shouldGenerateImage("给我生成风景图片冬天"));
+  console.log("测试2: '生成图片' ->", shouldGenerateImage("生成图片"));
+  console.log("测试3: 'hello' ->", shouldGenerateImage("hello"));
+
+  console.log("当前 query 的判断结果:", shouldGenerateImage(query));
+  console.log("shouldGenerateImage 函数:", shouldGenerateImage);
+
+  // 最高优先级：检查是否需要生成图片
+  const shouldGen = shouldGenerateImage(query);
+  console.log("shouldGen 结果:", shouldGen);
+
+  if (shouldGen) {
+    console.log("触发图片生成逻辑");
+    try {
+      onChunk("正在生成图片，请稍候...\n\n");
+
+      const imagePrompt = extractImagePrompt(query);
+      console.log("Generating image with prompt:", imagePrompt);
+
+      const generatedImage = await generateImage(imagePrompt);
+
+      onChunk(`图片已生成！\n\n描述: ${imagePrompt}`);
+
+      return {
+        citations: [],
+        generatedAttachments: [generatedImage]
+      };
+    } catch (error) {
+      console.error("Image generation error:", error);
+      const msg = error instanceof Error ? error.message : "unknown error";
+      let errorMsg: string;
+
+      if (msg.includes("timeout") || msg.includes("TIMEOUT") || msg.includes("超时")) {
+        errorMsg = "图片生成超时\n\n可能的原因：\n1. API 服务响应较慢\n2. 网络连接不稳定\n\n建议：\n- 稍后重试\n- 简化图片描述\n- 检查 API 配置";
+      } else if (msg.includes("429") || msg.includes("rate limit")) {
+        errorMsg = "请求频率超限\n\n请稍后再试。";
+      } else if (msg.includes("content_policy") || msg.includes("违规")) {
+        errorMsg = "内容违反政策\n\n请修改图片描述后重试。";
+      } else {
+        errorMsg = `图片生成失败: ${msg}\n\n请检查：\n- API Key 是否正确\n- API 是否支持图片生成\n- 网络连接是否正常`;
+      }
+
+      onChunk(errorMsg);
+      return { citations: [] };
+    }
+  }
+
+  // 如果有附件，优先直接使用 vision LLM 处理，不依赖知识库
+  if (attachments && attachments.length > 0) {
+    try {
+      onChunk("正在处理图片，请稍候...\n\n");
+
+      // 构建多模态消息内容
+      const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+
+      // 添加文本部分
+      if (query) {
+        contentParts.push({ type: "text", text: query });
+      }
+
+      // 处理所有图片附件
+      for (const att of attachments) {
+        if (att.type === 'image') {
+          try {
+            // 尝试转换为 base64
+            let imageUrl = att.url;
+            if (att.url.startsWith('blob:')) {
+              imageUrl = await blobToBase64(att.url);
+            }
+            contentParts.push({
+              type: "image_url",
+              image_url: { url: imageUrl }
+            });
+          } catch (e) {
+            console.error("Failed to process image attachment:", e);
+          }
+        }
+      }
+
+      // 如果没有文本，添加默认提示
+      if (!query) {
+        contentParts.unshift({ type: "text", text: "请描述这张图片的内容。" });
+      }
+
+      const humanMessage = new HumanMessage({ content: contentParts });
+      console.log("Sending request to Vision LLM...");
+      const stream = await llmWithTools.stream([humanMessage]);
+
+      let fullContent = "";
+      let rafId: number | null = null;
+      const flushBuffer = (buffer: string) => {
+        onChunk(buffer);
+        rafId = null;
+      };
+
+      for await (const chunk of stream) {
+        if (chunk?.content) {
+          fullContent += chunk.content;
+          if (rafId === null) {
+            rafId = requestAnimationFrame(() => flushBuffer(fullContent));
+          }
+        }
+      }
+
+      return { citations: [] };
+    } catch (error) {
+      console.error("Vision LLM error:", error);
+      const msg = error instanceof Error ? error.message : "unknown error";
+      let errorMsg: string;
+
+      if (msg.includes("timeout") || msg.includes("TIMEOUT") || msg.includes("超时")) {
+        errorMsg = "请求超时\n\n可能的原因：\n1. API 服务响应较慢\n2. 网络连接不稳定\n3. 图片处理耗时较长\n\n建议：\n- 稍后重试\n- 使用更小的图片\n- 检查 API 配置";
+      } else if (msg.includes("429") || msg.includes("rate limit")) {
+        errorMsg = "请求频率超限\n\n请稍后再试。";
+      } else {
+        errorMsg = `处理图片时出错: ${msg} \n\n请检查：\n - API Key 是否正确\n - 网络连接是否正常\n - 图片格式是否支持`;
+      }
+
+      onChunk(errorMsg);
+      return { citations: [] };
+    }
+  }
+
+  // 没有附件时，走原来的知识库 RAG 流程
   const retrieved = await search(query);
+  if (retrieved.length === 0) {
+    const msg = "未在知识库中找到与问题相关的内容，请先补充资料或调整问题表述。";
+    for (const ch of msg) {
+      onChunk(ch);
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    return { citations: [] };
+  }
   const contextStr = retrieved.map((r) => r.doc.pageContent).join("\n\n");
 
   const prompt = ChatPromptTemplate.fromTemplate(`Answer the question based only on the following context:
-{context}
+        { context }
 
- 
-Question: {question}`);
+
+        Question: { question } `);
 
   const chain = RunnableSequence.from([prompt, llmWithTools]);
 
@@ -454,28 +698,48 @@ Question: {question}`);
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : "unknown error";
-    const errorMsg = `处理请求时出错: ${msg}`;
+    const errorMsg = `处理请求时出错: ${msg} `;
     for (const ch of errorMsg) {
       onChunk(ch);
       await new Promise((r) => setTimeout(r, 16));
     }
   }
 
-  const citations = retrieved.map((r) => {
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const latinTokens = (query.match(/[a-z0-9]+/gi) || [])
+    .map((t) => t.toLowerCase())
+    .filter((t) => t.length >= 2);
+  const zhTokens = (query.match(/[\u4e00-\u9fa5]{2,}/g) || []).filter(Boolean);
+  const tokens = Array.from(new Set([...latinTokens, ...zhTokens])).filter(Boolean);
+
+  const citations = retrieved.slice(0, 4).map((r) => {
     const meta = r.doc.metadata;
     const fn = typeof meta?.filename === "string" ? meta.filename : undefined;
     const idx = typeof meta?.chunkIndex === "number" ? meta.chunkIndex : 0;
     const cls = typeof meta?.lineStart === "number" ? meta.lineStart : undefined;
-    const { hitStartAbs, hitEndAbs, hitText } = computeHitInsideChunk(query, r.doc.pageContent, cls);
+    const chunkNorm = normalize(r.doc.pageContent);
+    const bestToken =
+      tokens.find((t) => chunkNorm.includes(normalize(t))) || query;
+    const { hitStartAbs, hitEndAbs, hitText } = computeHitInsideChunk(
+      bestToken,
+      r.doc.pageContent,
+      cls,
+    );
+
+    const rawScore =
+      typeof r.score === "number" && Number.isFinite(r.score) ? r.score : undefined;
+    const score = typeof rawScore === "number" && rawScore >= 0 ? rawScore : undefined;
+    const hasHit = typeof hitText === "string" && hitText.trim().length > 0;
+
     return {
       filename: fn,
       chunkIndex: idx,
       preview: r.doc.pageContent.slice(0, 80),
-      score: r.score,
+      score,
       content: r.doc.pageContent,
-      startLine: hitStartAbs,
-      endLine: hitEndAbs,
-      hitText,
+      startLine: hasHit ? hitStartAbs : undefined,
+      endLine: hasHit ? hitEndAbs : undefined,
+      hitText: hasHit ? hitText : undefined,
     };
   });
   return { citations };
